@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model base_maquinas_import {
+  id                            Int     @id @default(autoincrement())
+  numero_serie                  String? @db.VarChar(255)
+  setor                         String? @db.VarChar(255)
+  usuario                       String? @db.VarChar(255)
+  tipo_equipamento              String? @db.VarChar(255)
+  modelo                        String? @db.VarChar(255)
+  contrato                      String? @db.VarChar(255)
+  origem                        String? @db.VarChar(255)
+  observacoes                   String? @db.Text
+  login_email                   String? @db.VarChar(255)
+  login_maquina                 String? @db.VarChar(255)
+  esset                         String? @db.VarChar(50)
+  termo_responsabilidade        String? @db.VarChar(50)
+  numero_termo_responsabilidade String? @db.VarChar(255)
+}
+
+model contratos {
+  id   Int    @id @default(autoincrement())
+  nome String @unique(map: "nome") @db.VarChar(150)
+}
+
+model maquinas {
+  id                            Int     @id @default(autoincrement())
+  numero_serie                  String  @unique(map: "uq_maquinas_numero_serie") @db.VarChar(255)
+  setor_id                      Int
+  usuario_id                    Int?
+  tipo_equipamento_id           Int?
+  modelo_id                     Int?
+  contrato_id                   Int?
+  origem_id                     Int?
+  observacoes                   String? @db.Text
+  esset                         String? @db.VarChar(50)
+  termo_responsabilidade        String? @db.VarChar(50)
+  numero_termo_responsabilidade String? @db.VarChar(255)
+
+  @@index([contrato_id], map: "fk_maquinas_contrato")
+  @@index([modelo_id], map: "fk_maquinas_modelo")
+  @@index([origem_id], map: "fk_maquinas_origem")
+  @@index([setor_id], map: "fk_maquinas_setor")
+  @@index([tipo_equipamento_id], map: "fk_maquinas_tipo")
+  @@index([usuario_id], map: "fk_maquinas_usuario")
+}
+
+
+model Funcionario {
+  id        Int      @id @default(autoincrement())
+  nome      String   @db.VarChar(150)
+  email     String   @unique @db.VarChar(150)
+  senhaHash String   @map("senha_hash") @db.VarChar(255)
+  ativo     Boolean  @default(true)
+  perfil    String   @default("operador") @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("funcionarios")
+}
+
+
+model modelos {
+  id   Int    @id @default(autoincrement())
+  nome String @unique(map: "nome") @db.VarChar(150)
+}
+
+model origens {
+  id   Int    @id @default(autoincrement())
+  nome String @unique(map: "nome") @db.VarChar(100)
+}
+
+model setores {
+  id   Int    @id @default(autoincrement())
+  nome String @unique(map: "nome") @db.VarChar(100)
+}
+
+model tipos_equipamento {
+  id   Int    @id @default(autoincrement())
+  nome String @unique(map: "nome") @db.VarChar(100)
+}
+
+model usuarios {
+  id            Int     @id @default(autoincrement())
+  nome          String  @db.VarChar(150)
+  login_email   String? @db.VarChar(150)
+  login_maquina String? @db.VarChar(150)
+}
