@@ -2,10 +2,27 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { exigeMaster } from "@/lib/auth";
+import { criarLogAuditoria } from "@/lib/auditoria";
+
+function snapshotFuncionario(funcionario: {
+  id: number;
+  nome: string;
+  email: string;
+  perfil: string;
+  ativo: boolean;
+}) {
+  return {
+    id: funcionario.id,
+    nome: funcionario.nome,
+    email: funcionario.email,
+    perfil: funcionario.perfil,
+    ativo: funcionario.ativo,
+  };
+}
 
 export async function POST(req: Request) {
   try {
-    await exigeMaster();
+    const logado = await exigeMaster();
 
     const body = await req.json();
     const nome = body?.nome?.trim();
@@ -21,10 +38,7 @@ export async function POST(req: Request) {
     }
 
     if (!["master", "operador"].includes(perfil)) {
-      return NextResponse.json(
-        { erro: "Perfil inválido." },
-        { status: 400 }
-      );
+      return NextResponse.json({ erro: "Perfil inválido." }, { status: 400 });
     }
 
     const existente = await prisma.funcionario.findUnique({
@@ -48,6 +62,20 @@ export async function POST(req: Request) {
         perfil,
         ativo: true,
       },
+    });
+
+    await criarLogAuditoria({
+      entidade: "funcionario",
+      entidadeId: funcionario.id,
+      acao: "criacao",
+      funcionario: {
+        id: logado.id,
+        nome: logado.nome,
+        email: logado.email,
+      },
+      descricao: `Criou o funcionário ${funcionario.nome}`,
+      antes: null,
+      depois: snapshotFuncionario(funcionario),
     });
 
     return NextResponse.json({ sucesso: true, funcionario });

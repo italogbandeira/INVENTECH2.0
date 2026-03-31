@@ -53,18 +53,19 @@ model maquinas {
 
 
 model Funcionario {
-  id        Int      @id @default(autoincrement())
-  nome      String   @db.VarChar(150)
-  email     String   @unique @db.VarChar(150)
-  senhaHash String   @map("senha_hash") @db.VarChar(255)
-  ativo     Boolean  @default(true)
-  perfil    String   @default("operador") @db.VarChar(50)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id            Int            @id @default(autoincrement())
+  nome          String         @db.VarChar(150)
+  email         String         @unique @db.VarChar(150)
+  senhaHash     String         @map("senha_hash") @db.VarChar(255)
+  ativo         Boolean        @default(true)
+  perfil        String         @default("operador") @db.VarChar(50)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  auditoriaLogs AuditoriaLog[]
 
   @@map("funcionarios")
 }
-
 
 model modelos {
   id   Int    @id @default(autoincrement())
@@ -91,4 +92,29 @@ model usuarios {
   nome          String  @db.VarChar(150)
   login_email   String? @db.VarChar(150)
   login_maquina String? @db.VarChar(150)
+}
+
+
+model AuditoriaLog {
+  id              Int          @id @default(autoincrement())
+  entidade        String       @db.VarChar(50)
+  entidadeId      Int?         @map("entidade_id")
+  acao            String       @db.VarChar(50)
+
+  funcionarioId   Int?         @map("funcionario_id")
+  funcionarioNome String?      @map("funcionario_nome") @db.VarChar(150)
+
+  descricao       String?      @db.Text
+  antes           String?      @db.Text
+  depois          String?      @db.Text
+
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  funcionarioRef  Funcionario? @relation(fields: [funcionarioId], references: [id])
+
+  @@index([funcionarioId])
+  @@index([entidade, entidadeId])
+  @@index([createdAt])
+
+  @@map("auditoria_logs")
 }

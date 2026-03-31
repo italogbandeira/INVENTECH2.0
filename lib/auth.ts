@@ -24,7 +24,13 @@ export async function criarToken(funcionario: SessaoFuncionario) {
 
 export async function verificarToken(token: string) {
   const { payload } = await jwtVerify(token, SECRET);
-  return payload as unknown as SessaoFuncionario;
+
+  return {
+    id: Number(payload.id),
+    nome: String(payload.nome),
+    email: String(payload.email),
+    perfil: String(payload.perfil),
+  } satisfies SessaoFuncionario;
 }
 
 export async function getFuncionarioLogado() {
@@ -38,6 +44,10 @@ export async function getFuncionarioLogado() {
   } catch {
     return null;
   }
+}
+
+export async function getSessaoServidor() {
+  return await getFuncionarioLogado();
 }
 
 export async function exigeLogin() {

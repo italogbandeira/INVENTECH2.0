@@ -5,9 +5,13 @@ import { AUTH_COOKIE, criarToken } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
+    
+
     const body = await req.json();
-    const email = body?.email?.trim();
+    const email = body?.email?.trim().toLowerCase();
     const senha = body?.senha;
+
+    
 
     if (!email || !senha) {
       return NextResponse.json(
@@ -19,6 +23,8 @@ export async function POST(req: Request) {
     const funcionario = await prisma.funcionario.findUnique({
       where: { email },
     });
+
+    
 
     if (!funcionario) {
       return NextResponse.json(
@@ -36,6 +42,7 @@ export async function POST(req: Request) {
 
     const senhaCorreta = await bcrypt.compare(senha, funcionario.senhaHash);
 
+    
     if (!senhaCorreta) {
       return NextResponse.json(
         { erro: "Credenciais inválidas." },
@@ -50,6 +57,8 @@ export async function POST(req: Request) {
       perfil: funcionario.perfil,
     });
 
+    
+
     const response = NextResponse.json({ sucesso: true });
 
     response.cookies.set(AUTH_COOKIE, token, {
@@ -57,11 +66,14 @@ export async function POST(req: Request) {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 8
+      maxAge: 60 * 60 * 8,
     });
+
+    
 
     return response;
   } catch (error) {
+    console.error("ERRO REAL DO LOGIN:");
     console.error(error);
     return NextResponse.json(
       { erro: "Erro interno ao fazer login." },

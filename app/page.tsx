@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import MultiSelectFilter from "@/components/MultiSelectFilter";
 
 type MaquinaDetalhada = {
   id: number;
@@ -32,6 +33,9 @@ type FuncionarioLogado = {
 };
 
 export default function Home() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [maquinas, setMaquinas] = useState<MaquinaDetalhada[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -39,17 +43,25 @@ export default function Home() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [funcionarioLogado, setFuncionarioLogado] =
-  useState<FuncionarioLogado | null>(null);
-  const searchParams = useSearchParams();
+    useState<FuncionarioLogado | null>(null);
+
+  const [selecionadas, setSelecionadas] = useState<number[]>([]);
+  const [exportando, setExportando] = useState(false);
+  const [saindo, setSaindo] = useState(false);
+
   const sucesso = searchParams.get("sucesso");
 
   const [numeroSerie, setNumeroSerie] = useState("");
-  const [setor, setSetor] = useState("");
-  const [usuario, setUsuario] = useState("");
-  const [tipoEquipamento, setTipoEquipamento] = useState("");
-  const [modelo, setModelo] = useState("");
-  const [contrato, setContrato] = useState("");
-  const [origem, setOrigem] = useState("");
+  const [setoresSelecionados, setSetoresSelecionados] = useState<string[]>([]);
+  const [usuariosSelecionados, setUsuariosSelecionados] = useState<string[]>(
+    []
+  );
+  const [tiposSelecionados, setTiposSelecionados] = useState<string[]>([]);
+  const [modelosSelecionados, setModelosSelecionados] = useState<string[]>([]);
+  const [contratosSelecionados, setContratosSelecionados] = useState<string[]>(
+    []
+  );
+  const [origensSelecionadas, setOrigensSelecionadas] = useState<string[]>([]);
 
   const [setores, setSetores] = useState<ItemFiltro[]>([]);
   const [usuarios, setUsuarios] = useState<ItemFiltro[]>([]);
@@ -92,34 +104,39 @@ export default function Home() {
         origensRes.json(),
       ]);
 
-      setSetores(setoresData);
-      setUsuarios(usuariosData);
-      setTiposEquipamento(tiposData);
-      setModelos(modelosData);
-      setContratos(contratosData);
-      setOrigens(origensData);
+      setSetores(Array.isArray(setoresData) ? setoresData : []);
+      setUsuarios(Array.isArray(usuariosData) ? usuariosData : []);
+      setTiposEquipamento(Array.isArray(tiposData) ? tiposData : []);
+      setModelos(Array.isArray(modelosData) ? modelosData : []);
+      setContratos(Array.isArray(contratosData) ? contratosData : []);
+      setOrigens(Array.isArray(origensData) ? origensData : []);
     } catch (error) {
       console.error("Erro ao carregar filtros:", error);
+      setSetores([]);
+      setUsuarios([]);
+      setTiposEquipamento([]);
+      setModelos([]);
+      setContratos([]);
+      setOrigens([]);
     }
   }
 
   async function carregarFuncionarioLogado() {
-  try {
-    const response = await fetch("/api/me");
+    try {
+      const response = await fetch("/api/me");
 
-    if (!response.ok) {
+      if (!response.ok) {
+        setFuncionarioLogado(null);
+        return;
+      }
+
+      const data = await response.json();
+      setFuncionarioLogado(data.usuario ?? data.funcionario ?? null);
+    } catch (error) {
+      console.error("Erro ao carregar funcionário logado:", error);
       setFuncionarioLogado(null);
-      return;
     }
-
-    const data = await response.json();
-    setFuncionarioLogado(data.usuario ?? data.funcionario ?? null);
-  } catch (error) {
-    console.error("Erro ao carregar funcionário logado:", error);
-    setFuncionarioLogado(null);
   }
-}
-
 
   async function carregarMaquinas(pageToLoad = page) {
     setLoading(true);
@@ -127,15 +144,18 @@ export default function Home() {
     try {
       const params = new URLSearchParams();
 
-      if (numeroSerie.trim()) params.set("numero_serie", numeroSerie.trim());
-      if (setor.trim()) params.set("setor", setor.trim());
-      if (usuario.trim()) params.set("usuario", usuario.trim());
-      if (tipoEquipamento.trim()) {
-        params.set("tipo_equipamento", tipoEquipamento.trim());
+      if (numeroSerie.trim()) {
+        params.set("numero_serie", numeroSerie.trim());
       }
-      if (modelo.trim()) params.set("modelo", modelo.trim());
-      if (contrato.trim()) params.set("contrato", contrato.trim());
-      if (origem.trim()) params.set("origem", origem.trim());
+
+      setoresSelecionados.forEach((item) => params.append("setor", item));
+      usuariosSelecionados.forEach((item) => params.append("usuario", item));
+      tiposSelecionados.forEach((item) =>
+        params.append("tipo_equipamento", item)
+      );
+      modelosSelecionados.forEach((item) => params.append("modelo", item));
+      contratosSelecionados.forEach((item) => params.append("contrato", item));
+      origensSelecionadas.forEach((item) => params.append("origem", item));
 
       params.set("page", String(pageToLoad));
       params.set("limit", String(limit));
@@ -145,7 +165,9 @@ export default function Home() {
       const response = await fetch(url);
       const data = await response.json();
 
-      setMaquinas(data.dados ?? []);
+      const maquinasCarregadas = Array.isArray(data.dados) ? data.dados : [];
+
+      setMaquinas(maquinasCarregadas);
       setTotal(data.total ?? 0);
       setTotalPages(data.totalPages ?? 0);
       setPage(data.page ?? 1);
@@ -160,10 +182,10 @@ export default function Home() {
   }
 
   useEffect(() => {
-  carregarFiltros();
-  carregarMaquinas(1);
-  carregarFuncionarioLogado();
-}, []);
+    carregarFiltros();
+    carregarMaquinas(1);
+    carregarFuncionarioLogado();
+  }, []);
 
   function handleFiltrar() {
     carregarMaquinas(1);
@@ -171,18 +193,20 @@ export default function Home() {
 
   function handleLimpar() {
     setNumeroSerie("");
-    setSetor("");
-    setUsuario("");
-    setTipoEquipamento("");
-    setModelo("");
-    setContrato("");
-    setOrigem("");
+    setSetoresSelecionados([]);
+    setUsuariosSelecionados([]);
+    setTiposSelecionados([]);
+    setModelosSelecionados([]);
+    setContratosSelecionados([]);
+    setOrigensSelecionadas([]);
+    
     setLoading(true);
 
     fetch(`/api/maquinas-detalhadas?page=1&limit=${limit}`)
       .then((res) => res.json())
       .then((data) => {
-        setMaquinas(data.dados ?? []);
+        const maquinasCarregadas = Array.isArray(data.dados) ? data.dados : [];
+        setMaquinas(maquinasCarregadas);
         setTotal(data.total ?? 0);
         setTotalPages(data.totalPages ?? 0);
         setPage(data.page ?? 1);
@@ -210,266 +234,492 @@ export default function Home() {
     }
   }
 
+  function toggleSelecionada(id: number) {
+    setSelecionadas((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  }
+
+  function selecionarTodasVisiveis() {
+    setSelecionadas((prev) => {
+      const novas = maquinas
+        .map((item) => item.id)
+        .filter((id) => !prev.includes(id));
+
+      return [...prev, ...novas];
+    });
+  }
+
+  function limparSelecaoVisivel() {
+    setSelecionadas((prev) =>
+      prev.filter((id) => !maquinas.some((maquina) => maquina.id === id))
+    );
+  }
+
+  function limparTodasSelecionadas() {
+    setSelecionadas([]);
+  }
+
+  function paginaAtualEstaTodaSelecionada() {
+    if (maquinas.length === 0) return false;
+    return maquinas.every((maquina) => selecionadas.includes(maquina.id));
+  }
+
+  function togglePaginaAtual() {
+    if (paginaAtualEstaTodaSelecionada()) {
+      limparSelecaoVisivel();
+    } else {
+      selecionarTodasVisiveis();
+    }
+  }
+
+  async function handleExportarSelecionadas() {
+    if (selecionadas.length === 0) {
+      alert("Selecione pelo menos uma máquina para exportar.");
+      return;
+    }
+
+    setExportando(true);
+
+    try {
+      const response = await fetch("/api/maquinas/exportar", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          numeroSerie,
+          setores: setoresSelecionados,
+          usuarios: usuariosSelecionados,
+          tiposEquipamento: tiposSelecionados,
+          modelos: modelosSelecionados,
+          contratos: contratosSelecionados,
+          origens: origensSelecionadas,
+          idsSelecionados: selecionadas,
+          exportarTudoFiltrado: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.erro || "Erro ao exportar Excel.");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = "maquinas-selecionadas.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível exportar o Excel.");
+    } finally {
+      setExportando(false);
+    }
+  }
+
+  async function handleExportarTudoFiltrado() {
+    setExportando(true);
+
+    try {
+      const response = await fetch("/api/maquinas/exportar", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          numeroSerie,
+          setores: setoresSelecionados,
+          usuarios: usuariosSelecionados,
+          tiposEquipamento: tiposSelecionados,
+          modelos: modelosSelecionados,
+          contratos: contratosSelecionados,
+          origens: origensSelecionadas,
+          exportarTudoFiltrado: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.erro || "Erro ao exportar Excel.");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = "maquinas-filtradas.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível exportar o Excel.");
+    } finally {
+      setExportando(false);
+    }
+  }
+
+  async function handleSair() {
+    try {
+      setSaindo(true);
+
+      const response = await fetch("/api/logout", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Não foi possível sair do sistema.");
+      }
+
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      console.error("Erro ao sair:", error);
+      alert("Não foi possível sair do sistema.");
+    } finally {
+      setSaindo(false);
+    }
+  }
+
   const Paginacao = () => (
-    <div className="my-4 flex items-center gap-3">
-      <button
-        onClick={handlePaginaAnterior}
-        disabled={page <= 1 || loading}
-        className="rounded-lg bg-gray-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Anterior
-      </button>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="text-sm text-gray-500">
+        Mostrando página <strong>{page}</strong> de{" "}
+        <strong>{totalPages || 1}</strong>
+      </div>
 
-      <span className="text-sm text-gray-700">
-        Página {page} de {totalPages || 1}
-      </span>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handlePaginaAnterior}
+          disabled={page <= 1 || loading}
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Anterior
+        </button>
 
-      <button
-        onClick={handleProximaPagina}
-        disabled={page >= totalPages || loading || totalPages === 0}
-        className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Próxima
-      </button>
+        <button
+          onClick={handleProximaPagina}
+          disabled={page >= totalPages || loading || totalPages === 0}
+          className="rounded-lg border border-blue-200 bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Próxima
+        </button>
+      </div>
     </div>
   );
 
   return (
-    <main className="min-h-screen bg-gray-100 p-8 text-gray-900">
-      <div className="mx-auto max-w-7xl">
-        <h1 className="mb-6 text-3xl font-bold text-gray-900">
-          Controle de Máquinas
-        </h1>
+    <main className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+                Controle de Máquinas
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Gestão de inventário, filtros e exportação de relatórios.
+              </p>
+            </div>
 
-        <div className="mb-4 flex gap-2">
-  <Link
-    href="/nova-maquina"
-    className="inline-block rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700"
-  >
-    Nova Máquina
-  </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/nova-maquina"
+                className="inline-flex items-center rounded-xl bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700"
+              >
+                Nova Máquina
+              </Link>
 
-  {funcionarioLogado?.perfil === "master" && (
-    <Link
-      href="/funcionarios"
-      className="inline-block rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-    >
-      Funcionários
-    </Link>
-  )}
-</div>
+              {funcionarioLogado?.perfil === "master" && (
+                <Link
+                  href="/auditoria"
+                  className="inline-flex items-center rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+                >
+                  Auditoria
+                </Link>
+              )}
+
+              {funcionarioLogado?.perfil === "master" && (
+                <Link
+                  href="/funcionarios"
+                  className="inline-flex items-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+                >
+                  Funcionários
+                </Link>
+              )}
+
+              <button
+                onClick={handleSair}
+                disabled={saindo}
+                className="inline-flex items-center rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saindo ? "Saindo..." : "Sair"}
+              </button>
+            </div>
+          </div>
+        </section>
 
         {sucesso === "maquina-criada" && (
-          <div className="mb-4 rounded-lg bg-green-100 p-3 text-green-700">
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-green-700 shadow-sm">
             Máquina cadastrada com sucesso.
           </div>
         )}
 
         {sucesso === "maquina-editada" && (
-          <div className="mb-4 rounded-lg bg-green-100 p-3 text-green-700">
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-green-700 shadow-sm">
             Máquina atualizada com sucesso.
           </div>
         )}
 
         {sucesso === "maquina-excluida" && (
-          <div className="mb-4 rounded-lg bg-green-100 p-3 text-green-700">
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-green-700 shadow-sm">
             Máquina excluída com sucesso.
           </div>
         )}
 
-        <div className="mb-6 rounded-xl bg-white p-4 shadow-md">
+        <section className="rounded-3xl bg-white p-5 shadow-lg ring-1 ring-slate-200">
+          <div className="mb-5">
+            <h2 className="text-lg font-semibold text-slate-900">Filtros</h2>
+            <p className="text-sm text-slate-500">
+              Refine a busca e exporte somente o que for necessário.
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div>
-              <label className="mb-1 block text-sm font-medium">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
                 Número de Série
               </label>
               <input
                 type="text"
                 value={numeroSerie}
                 onChange={(e) => setNumeroSerie(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 p-2"
+                className="w-full rounded-xl border border-slate-300 p-2"
                 placeholder="Digite o número de série"
               />
             </div>
 
-            <div>
-              <label className="mb-1 block text-sm font-medium">Setor</label>
-              <select
-                value={setor}
-                onChange={(e) => setSetor(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 p-2"
-              >
-                <option value="">Todos</option>
-                {setores.map((item) => (
-                  <option key={item.id} value={item.nome}>
-                    {item.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <MultiSelectFilter
+              label="Setores"
+              options={setores}
+              selectedValues={setoresSelecionados}
+              onChange={setSetoresSelecionados}
+              placeholder="Buscar setor..."
+            />
 
-            <div>
-              <label className="mb-1 block text-sm font-medium">Usuário</label>
-              <select
-                value={usuario}
-                onChange={(e) => setUsuario(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 p-2"
-              >
-                <option value="">Todos</option>
-                {usuarios.map((item) => (
-                  <option key={item.id} value={item.nome}>
-                    {item.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <MultiSelectFilter
+              label="Usuários"
+              options={usuarios}
+              selectedValues={usuariosSelecionados}
+              onChange={setUsuariosSelecionados}
+              placeholder="Buscar usuário..."
+            />
 
-            <div>
-              <label className="mb-1 block text-sm font-medium">Tipo</label>
-              <select
-                value={tipoEquipamento}
-                onChange={(e) => setTipoEquipamento(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 p-2"
-              >
-                <option value="">Todos</option>
-                {tiposEquipamento.map((item) => (
-                  <option key={item.id} value={item.nome}>
-                    {item.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <MultiSelectFilter
+              label="Tipos"
+              options={tiposEquipamento}
+              selectedValues={tiposSelecionados}
+              onChange={setTiposSelecionados}
+              placeholder="Buscar tipo..."
+            />
 
-            <div>
-              <label className="mb-1 block text-sm font-medium">Modelo</label>
-              <select
-                value={modelo}
-                onChange={(e) => setModelo(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 p-2"
-              >
-                <option value="">Todos</option>
-                {modelos.map((item) => (
-                  <option key={item.id} value={item.nome}>
-                    {item.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <MultiSelectFilter
+              label="Modelos"
+              options={modelos}
+              selectedValues={modelosSelecionados}
+              onChange={setModelosSelecionados}
+              placeholder="Buscar modelo..."
+            />
 
-            <div>
-              <label className="mb-1 block text-sm font-medium">Contrato</label>
-              <select
-                value={contrato}
-                onChange={(e) => setContrato(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 p-2"
-              >
-                <option value="">Todos</option>
-                {contratos.map((item) => (
-                  <option key={item.id} value={item.nome}>
-                    {item.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <MultiSelectFilter
+              label="Contratos"
+              options={contratos}
+              selectedValues={contratosSelecionados}
+              onChange={setContratosSelecionados}
+              placeholder="Buscar contrato..."
+            />
 
-            <div>
-              <label className="mb-1 block text-sm font-medium">Origem</label>
-              <select
-                value={origem}
-                onChange={(e) => setOrigem(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 p-2"
-              >
-                <option value="">Todos</option>
-                {origens.map((item) => (
-                  <option key={item.id} value={item.nome}>
-                    {item.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <MultiSelectFilter
+              label="Origens"
+              options={origens}
+              selectedValues={origensSelecionadas}
+              onChange={setOrigensSelecionadas}
+              placeholder="Buscar origem..."
+            />
 
             <div className="flex items-end gap-2">
               <button
                 onClick={handleFiltrar}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
               >
                 Filtrar
               </button>
 
               <button
                 onClick={handleLimpar}
-                className="rounded-lg bg-gray-600 px-4 py-2 text-white hover:bg-gray-700"
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
               >
                 Limpar
               </button>
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="mb-3 text-sm text-gray-600">
-          {loading
-            ? "Carregando..."
-            : `${total} registro(s) encontrado(s) | Página ${page} de ${
-                totalPages || 1
-              }`}
-        </div>
+        <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-700">
+                {loading
+                  ? "Carregando registros..."
+                  : `${total} registro(s) encontrado(s)`}
+              </p>
+              <p className="text-sm text-slate-500">
+                <strong>{selecionadas.length}</strong> máquina(s) selecionada(s)
+              </p>
+            </div>
 
-        <Paginacao />
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={limparTodasSelecionadas}
+                disabled={selecionadas.length === 0}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Limpar seleção
+              </button>
 
-        <div className="overflow-x-auto rounded-xl bg-white shadow-md">
-          <table className="min-w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-800 text-left text-white">
-                <th className="p-3">ID</th>
-                <th className="p-3">Número de Série</th>
-                <th className="p-3">Setor</th>
-                <th className="p-3">Usuário</th>
-                <th className="p-3">Tipo</th>
-                <th className="p-3">Modelo</th>
-                <th className="p-3">Contrato</th>
-                <th className="p-3">Origem</th>
-                <th className="p-3">ESSET</th>
-                <th className="p-3">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {maquinas.map((maquina) => (
-                <tr
-                  key={maquina.id}
-                  className="border-t border-gray-200 odd:bg-white even:bg-gray-50 hover:bg-blue-50"
-                >
-                  <td className="p-3">{maquina.id}</td>
-                  <td className="p-3 font-medium">{maquina.numero_serie}</td>
-                  <td className="p-3">{maquina.setor ?? "-"}</td>
-                  <td className="p-3">{maquina.usuario ?? "-"}</td>
-                  <td className="p-3">{maquina.tipo_equipamento ?? "-"}</td>
-                  <td className="p-3">{maquina.modelo ?? "-"}</td>
-                  <td className="p-3">{maquina.contrato ?? "-"}</td>
-                  <td className="p-3">{maquina.origem ?? "-"}</td>
-                  <td className="p-3">{maquina.esset ?? "-"}</td>
-                  <td className="p-3">
-                    <Link
-                      href={`/editar-maquina/${maquina.id}`}
-                      className="inline-flex min-w-[88px] items-center justify-center rounded-md bg-amber-500 px-3 py-2 text-sm font-semibold text-black shadow-sm hover:bg-amber-600"
+              <button
+                onClick={handleExportarSelecionadas}
+                disabled={exportando || selecionadas.length === 0}
+                className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exportando ? "Exportando..." : "Exportar selecionadas"}
+              </button>
+
+              <button
+                onClick={handleExportarTudoFiltrado}
+                disabled={exportando}
+                className="rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exportando ? "Exportando..." : "Exportar tudo do filtro"}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <Paginacao />
+
+          <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse">
+                <thead className="bg-slate-900 text-left text-white">
+                  <tr>
+                    <th className="p-4">
+                      <input
+                        type="checkbox"
+                        checked={paginaAtualEstaTodaSelecionada()}
+                        onChange={togglePaginaAtual}
+                      />
+                    </th>
+                    <th className="p-4 text-sm font-semibold">ID</th>
+                    <th className="p-4 text-sm font-semibold">Número de Série</th>
+                    <th className="p-4 text-sm font-semibold">Setor</th>
+                    <th className="p-4 text-sm font-semibold">Usuário</th>
+                    <th className="p-4 text-sm font-semibold">Tipo</th>
+                    <th className="p-4 text-sm font-semibold">Modelo</th>
+                    <th className="p-4 text-sm font-semibold">Contrato</th>
+                    <th className="p-4 text-sm font-semibold">Origem</th>
+                    <th className="p-4 text-sm font-semibold">ESSET</th>
+                    <th className="p-4 text-sm font-semibold">Ações</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {maquinas.map((maquina) => (
+                    <tr
+                      key={maquina.id}
+                      className="border-t border-slate-200 odd:bg-white even:bg-slate-50 hover:bg-blue-50"
                     >
-                      Editar
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+                      <td className="p-4">
+                        <input
+                          type="checkbox"
+                          checked={selecionadas.includes(maquina.id)}
+                          onChange={() => toggleSelecionada(maquina.id)}
+                        />
+                      </td>
 
-              {!loading && maquinas.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="p-6 text-center text-gray-500">
-                    Nenhum registro encontrado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                      <td className="p-4 text-sm text-slate-700">{maquina.id}</td>
 
-        <Paginacao />
+                      <td className="p-4 text-sm font-semibold text-slate-900">
+                        {maquina.numero_serie}
+                      </td>
+
+                      <td className="p-4 text-sm text-slate-700">
+                        {maquina.setor ?? "-"}
+                      </td>
+
+                      <td className="p-4 text-sm text-slate-700">
+                        {maquina.usuario ?? "-"}
+                      </td>
+
+                      <td className="p-4 text-sm text-slate-700">
+                        {maquina.tipo_equipamento ?? "-"}
+                      </td>
+
+                      <td className="p-4 text-sm text-slate-700">
+                        {maquina.modelo ?? "-"}
+                      </td>
+
+                      <td className="p-4 text-sm text-slate-700">
+                        {maquina.contrato ?? "-"}
+                      </td>
+
+                      <td className="p-4 text-sm text-slate-700">
+                        {maquina.origem ?? "-"}
+                      </td>
+
+                      <td className="p-4 text-sm text-slate-700">
+                        {maquina.esset ?? "-"}
+                      </td>
+
+                      <td className="p-4">
+                        <Link
+                          href={`/editar-maquina/${maquina.id}`}
+                          className="inline-flex items-center justify-center rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-black shadow-sm hover:bg-amber-600"
+                        >
+                          Editar
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {!loading && maquinas.length === 0 && (
+                    <tr>
+                      <td colSpan={11} className="p-10 text-center">
+                        <div className="text-sm font-medium text-slate-700">
+                          Nenhum registro encontrado.
+                        </div>
+                        <div className="mt-1 text-sm text-slate-500">
+                          Ajuste os filtros ou limpe a busca para tentar novamente.
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <Paginacao />
+        </section>
       </div>
     </main>
   );

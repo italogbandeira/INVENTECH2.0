@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { exigeMaster } from "@/lib/auth";
+import { criarLogAuditoria } from "@/lib/auditoria";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -17,6 +18,35 @@ async function buscarFuncionarioOuErro(id: number) {
   }
 
   return funcionario;
+}
+
+function snapshotFuncionario(funcionario: {
+  id: number;
+  nome: string;
+  email: string;
+  perfil: string;
+  ativo: boolean;
+}) {
+  return {
+    id: funcionario.id,
+    nome: funcionario.nome,
+    email: funcionario.email,
+    perfil: funcionario.perfil,
+    ativo: funcionario.ativo,
+  };
+}
+
+function autorAuditoria(logado: {
+  id: number;
+  nome: string;
+  email: string;
+  perfil: string;
+}) {
+  return {
+    id: logado.id,
+    nome: logado.nome,
+    email: logado.email,
+  };
 }
 
 export async function PATCH(req: Request, { params }: Params) {
@@ -56,9 +86,21 @@ export async function PATCH(req: Request, { params }: Params) {
         );
       }
 
-      await prisma.funcionario.update({
+      const antes = snapshotFuncionario(funcionario);
+
+      const atualizado = await prisma.funcionario.update({
         where: { id: funcionarioId },
         data: { ativo: false },
+      });
+
+      await criarLogAuditoria({
+        entidade: "funcionario",
+        entidadeId: funcionarioId,
+        acao: "inativacao",
+        funcionario: autorAuditoria(logado),
+        descricao: `Inativou o funcionário ${atualizado.nome}`,
+        antes,
+        depois: snapshotFuncionario(atualizado),
       });
 
       return NextResponse.json({ sucesso: true });
@@ -117,6 +159,8 @@ export async function PATCH(req: Request, { params }: Params) {
         }
       }
 
+      const antes = snapshotFuncionario(funcionario);
+
       const atualizado = await prisma.funcionario.update({
         where: { id: funcionarioId },
         data: {
@@ -126,33 +170,72 @@ export async function PATCH(req: Request, { params }: Params) {
         },
       });
 
+      await criarLogAuditoria({
+        entidade: "funcionario",
+        entidadeId: funcionarioId,
+        acao: "edicao",
+        funcionario: autorAuditoria(logado),
+        descricao: `Editou os dados do funcionário ${atualizado.nome}`,
+        antes,
+        depois: snapshotFuncionario(atualizado),
+      });
+
       return NextResponse.json({ sucesso: true, funcionario: atualizado });
     }
 
     if (acao === "redefinirSenha") {
-      const novaSenha = body?.novaSenha;
+  console.log("Redefinir senha de:", {
+    id: funcionario.id,
+    nome: funcionario.nome,
+    perfil: funcionario.perfil,
+  });
 
-      if (!novaSenha || String(novaSenha).trim().length < 6) {
-        return NextResponse.json(
-          { erro: "A nova senha deve ter pelo menos 6 caracteres." },
-          { status: 400 }
-        );
-      }
-
-      const senhaHash = await bcrypt.hash(novaSenha, 10);
-
-      await prisma.funcionario.update({
-        where: { id: funcionarioId },
-        data: { senhaHash },
-      });
-
-      return NextResponse.json({ sucesso: true });
-    }
-
+  if (funcionario.perfil === "master") {
+    console.log("BLOQUEANDO MASTER");
     return NextResponse.json(
-      { erro: "Ação inválida." },
+      {
+        erro: "Não é permitido redefinir a senha de um usuário master por esta tela.",
+      },
       { status: 400 }
     );
+  }
+
+  console.log("PASSOU DA TRAVA MASTER");
+
+  const novaSenha = body?.novaSenha;
+
+  if (!novaSenha || String(novaSenha).trim().length < 6) {
+    return NextResponse.json(
+      { erro: "A nova senha deve ter pelo menos 6 caracteres." },
+      { status: 400 }
+    );
+  }
+
+  const antes = snapshotFuncionario(funcionario);
+  const senhaHash = await bcrypt.hash(novaSenha, 10);
+
+  await prisma.funcionario.update({
+    where: { id: funcionarioId },
+    data: { senhaHash },
+  });
+
+  await criarLogAuditoria({
+    entidade: "funcionario",
+    entidadeId: funcionarioId,
+    acao: "redefinicao_senha",
+    funcionario: autorAuditoria(logado),
+    descricao: `Redefiniu a senha do funcionário ${funcionario.nome}`,
+    antes,
+    depois: {
+      ...antes,
+      senha: "REDEFINIDA",
+    },
+  });
+
+  return NextResponse.json({ sucesso: true });
+}
+
+    return NextResponse.json({ erro: "Ação inválida." }, { status: 400 });
   } catch (error) {
     if (error instanceof Error && error.message === "SEM_PERMISSAO") {
       return NextResponse.json({ erro: "Sem permissão." }, { status: 403 });
@@ -213,8 +296,20 @@ export async function DELETE(req: Request, { params }: Params) {
       );
     }
 
+    const antes = snapshotFuncionario(funcionario);
+
     await prisma.funcionario.delete({
       where: { id: funcionarioId },
+    });
+
+    await criarLogAuditoria({
+      entidade: "funcionario",
+      entidadeId: funcionarioId,
+      acao: "exclusao",
+      funcionario: autorAuditoria(logado),
+      descricao: `Excluiu o funcionário ${funcionario.nome}`,
+      antes,
+      depois: null,
     });
 
     return NextResponse.json({ sucesso: true });

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/src/lib/prisma";
+import { prisma } from "@/lib/prisma";
+import { exigeLogin } from "@/lib/auth";
+import { criarLogAuditoria } from "@/lib/auditoria";
 
 type Params = {
   params: Promise<{
@@ -20,6 +22,49 @@ type AtualizarMaquinaBody = {
   termo_responsabilidade?: string | null;
   numero_termo_responsabilidade?: string | null;
 };
+
+function snapshotMaquina(maquina: {
+  id: number;
+  numero_serie: string;
+  setor_id: number;
+  usuario_id: number | null;
+  tipo_equipamento_id: number | null;
+  modelo_id: number | null;
+  contrato_id: number | null;
+  origem_id: number | null;
+  observacoes: string | null;
+  esset: string | null;
+  termo_responsabilidade: string | null;
+  numero_termo_responsabilidade: string | null;
+}) {
+  return {
+    id: maquina.id,
+    numero_serie: maquina.numero_serie,
+    setor_id: maquina.setor_id,
+    usuario_id: maquina.usuario_id,
+    tipo_equipamento_id: maquina.tipo_equipamento_id,
+    modelo_id: maquina.modelo_id,
+    contrato_id: maquina.contrato_id,
+    origem_id: maquina.origem_id,
+    observacoes: maquina.observacoes,
+    esset: maquina.esset,
+    termo_responsabilidade: maquina.termo_responsabilidade,
+    numero_termo_responsabilidade: maquina.numero_termo_responsabilidade,
+  };
+}
+
+function autorAuditoria(logado: {
+  id: number;
+  nome: string;
+  email: string;
+  perfil: string;
+}) {
+  return {
+    id: logado.id,
+    nome: logado.nome,
+    email: logado.email,
+  };
+}
 
 export async function GET(_: NextRequest, { params }: Params) {
   try {
@@ -47,9 +92,9 @@ export async function GET(_: NextRequest, { params }: Params) {
   }
 }
 
-
 export async function DELETE(_: NextRequest, { params }: Params) {
   try {
+    const logado = await exigeLogin();
     const { id } = await params;
     const maquinaId = Number(id);
 
@@ -64,12 +109,28 @@ export async function DELETE(_: NextRequest, { params }: Params) {
       );
     }
 
+    const antes = snapshotMaquina(maquinaExistente);
+
     await prisma.maquinas.delete({
       where: { id: maquinaId },
     });
 
+    await criarLogAuditoria({
+      entidade: "maquina",
+      entidadeId: maquinaId,
+      acao: "exclusao",
+      funcionario: autorAuditoria(logado),
+      descricao: `Excluiu a máquina ${maquinaExistente.numero_serie}`,
+      antes,
+      depois: null,
+    });
+
     return NextResponse.json({ message: "Máquina excluída com sucesso." });
   } catch (error) {
+    if (error instanceof Error && error.message === "NAO_AUTENTICADO") {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+
     console.error("Erro ao excluir máquina:", error);
     return NextResponse.json(
       { error: "Erro ao excluir máquina." },
@@ -78,9 +139,9 @@ export async function DELETE(_: NextRequest, { params }: Params) {
   }
 }
 
-
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
+    const logado = await exigeLogin();
     const { id } = await params;
     const maquinaId = Number(id);
     const body = (await request.json()) as AtualizarMaquinaBody;
@@ -125,6 +186,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
       );
     }
 
+    const antes = snapshotMaquina(maquinaExistente);
+
     const maquinaAtualizada = await prisma.maquinas.update({
       where: { id: maquinaId },
       data: {
@@ -143,8 +206,22 @@ export async function PUT(request: NextRequest, { params }: Params) {
       },
     });
 
+    await criarLogAuditoria({
+      entidade: "maquina",
+      entidadeId: maquinaId,
+      acao: "edicao",
+      funcionario: autorAuditoria(logado),
+      descricao: `Editou a máquina ${maquinaAtualizada.numero_serie}`,
+      antes,
+      depois: snapshotMaquina(maquinaAtualizada),
+    });
+
     return NextResponse.json(maquinaAtualizada);
   } catch (error) {
+    if (error instanceof Error && error.message === "NAO_AUTENTICADO") {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
+
     console.error("Erro ao atualizar máquina:", error);
     return NextResponse.json(
       { error: "Erro ao atualizar máquina." },

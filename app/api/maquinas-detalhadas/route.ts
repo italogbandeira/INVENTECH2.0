@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/src/lib/prisma";
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { exigeLogin } from "@/lib/auth";
 
 type MaquinaDetalhada = {
   id: number;
@@ -16,79 +17,85 @@ type MaquinaDetalhada = {
   numero_termo_responsabilidade: string | null;
 };
 
-type ResultadoPaginado = {
-  dados: MaquinaDetalhada[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-};
-
-export async function GET(request: NextRequest) {
+export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(request.url);
+    await exigeLogin();
+
+    const { searchParams } = new URL(req.url);
 
     const numeroSerie = searchParams.get("numero_serie")?.trim() ?? "";
-    const setor = searchParams.get("setor")?.trim() ?? "";
-    const usuario = searchParams.get("usuario")?.trim() ?? "";
-    const tipoEquipamento = searchParams.get("tipo_equipamento")?.trim() ?? "";
-    const modelo = searchParams.get("modelo")?.trim() ?? "";
-    const contrato = searchParams.get("contrato")?.trim() ?? "";
-    const origem = searchParams.get("origem")?.trim() ?? "";
+    const setores = searchParams.getAll("setor").map((v) => v.trim()).filter(Boolean);
+    const usuarios = searchParams.getAll("usuario").map((v) => v.trim()).filter(Boolean);
+    const tipos = searchParams
+      .getAll("tipo_equipamento")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const modelos = searchParams.getAll("modelo").map((v) => v.trim()).filter(Boolean);
+    const contratos = searchParams
+      .getAll("contrato")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const origens = searchParams.getAll("origem").map((v) => v.trim()).filter(Boolean);
 
     const page = Number(searchParams.get("page") ?? "1");
     const limit = Number(searchParams.get("limit") ?? "20");
     const offset = (page - 1) * limit;
 
-    let whereClause = `
-      WHERE 1=1
-    `;
-
-    const params: string[] = [];
+    const conditions: string[] = [];
+    const values: (string | number)[] = [];
 
     if (numeroSerie) {
-      whereClause += ` AND m.numero_serie LIKE ?`;
-      params.push(`%${numeroSerie}%`);
+      conditions.push("m.numero_serie LIKE ?");
+      values.push(`%${numeroSerie}%`);
     }
 
-    if (setor) {
-      whereClause += ` AND s.nome = ?`;
-      params.push(setor);
+    if (setores.length > 0) {
+      const placeholders = setores.map(() => "?").join(", ");
+      conditions.push(`s.nome IN (${placeholders})`);
+      values.push(...setores);
     }
 
-    if (usuario) {
-      whereClause += ` AND u.nome = ?`;
-      params.push(usuario);
+    if (usuarios.length > 0) {
+      const placeholders = usuarios.map(() => "?").join(", ");
+      conditions.push(`u.nome IN (${placeholders})`);
+      values.push(...usuarios);
     }
 
-    if (tipoEquipamento) {
-      whereClause += ` AND te.nome = ?`;
-      params.push(tipoEquipamento);
+    if (tipos.length > 0) {
+      const placeholders = tipos.map(() => "?").join(", ");
+      conditions.push(`t.nome IN (${placeholders})`);
+      values.push(...tipos);
     }
 
-    if (modelo) {
-      whereClause += ` AND mo.nome = ?`;
-      params.push(modelo);
+    if (modelos.length > 0) {
+      const placeholders = modelos.map(() => "?").join(", ");
+      conditions.push(`mo.nome IN (${placeholders})`);
+      values.push(...modelos);
     }
 
-    if (contrato) {
-      whereClause += ` AND c.nome = ?`;
-      params.push(contrato);
+    if (contratos.length > 0) {
+      const placeholders = contratos.map(() => "?").join(", ");
+      conditions.push(`c.nome IN (${placeholders})`);
+      values.push(...contratos);
     }
 
-    if (origem) {
-      whereClause += ` AND o.nome = ?`;
-      params.push(origem);
+    if (origens.length > 0) {
+      const placeholders = origens.map(() => "?").join(", ");
+      conditions.push(`o.nome IN (${placeholders})`);
+      values.push(...origens);
     }
+
+    const whereClause =
+      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const queryBase = `
       FROM maquinas m
-      LEFT JOIN setores s ON m.setor_id = s.id
-      LEFT JOIN usuarios u ON m.usuario_id = u.id
-      LEFT JOIN tipos_equipamento te ON m.tipo_equipamento_id = te.id
-      LEFT JOIN modelos mo ON m.modelo_id = mo.id
-      LEFT JOIN contratos c ON m.contrato_id = c.id
-      LEFT JOIN origens o ON m.origem_id = o.id
+      LEFT JOIN setores s ON s.id = m.setor_id
+      LEFT JOIN usuarios u ON u.id = m.usuario_id
+      LEFT JOIN tipos_equipamento t ON t.id = m.tipo_equipamento_id
+      LEFT JOIN modelos mo ON mo.id = m.modelo_id
+      LEFT JOIN contratos c ON c.id = m.contrato_id
+      LEFT JOIN origens o ON o.id = m.origem_id
       ${whereClause}
     `;
 
@@ -97,11 +104,8 @@ export async function GET(request: NextRequest) {
       SELECT COUNT(*) as total
       ${queryBase}
       `,
-      ...params
+      ...values
     );
-
-    const total = Number(totalResult[0]?.total ?? 0);
-    const totalPages = Math.ceil(total / limit);
 
     const dados = await prisma.$queryRawUnsafe<MaquinaDetalhada[]>(
       `
@@ -110,7 +114,7 @@ export async function GET(request: NextRequest) {
         m.numero_serie,
         s.nome AS setor,
         u.nome AS usuario,
-        te.nome AS tipo_equipamento,
+        t.nome AS tipo_equipamento,
         mo.nome AS modelo,
         c.nome AS contrato,
         o.nome AS origem,
@@ -120,25 +124,28 @@ export async function GET(request: NextRequest) {
         m.numero_termo_responsabilidade
       ${queryBase}
       ORDER BY m.id DESC
-      LIMIT ${limit} OFFSET ${offset}
+      LIMIT ? OFFSET ?
       `,
-      ...params
+      ...values,
+      limit,
+      offset
     );
 
-    const resultado: ResultadoPaginado = {
+    const total = Number(totalResult?.[0]?.total ?? 0);
+    const totalPages = Math.ceil(total / limit);
+
+    return NextResponse.json({
       dados,
       total,
+      totalPages,
       page,
       limit,
-      totalPages,
-    };
-
-    return NextResponse.json(resultado);
+    });
   } catch (error) {
     console.error("Erro ao buscar máquinas detalhadas:", error);
 
     return NextResponse.json(
-      { error: "Erro ao buscar máquinas detalhadas" },
+      { erro: "Erro interno ao buscar máquinas detalhadas." },
       { status: 500 }
     );
   }
