@@ -8,7 +8,7 @@ const SECRET = new TextEncoder().encode(
 );
 
 const rotasProtegidas = ["/", "/nova-maquina", "/editar-maquina"];
-const rotasMaster = ["/funcionarios", "/auditoria"];
+const rotasMaster = ["/funcionarios", "/auditoria", "/importar-maquinas"];
 
 async function getSessao(token: string) {
   try {
@@ -63,5 +63,6 @@ export const config = {
     "/editar-maquina/:path*",
     "/funcionarios/:path*",
     "/auditoria/:path*",
+    "/importar-maquinas/:path*",
   ],
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import MultiSelectFilter from "@/components/MultiSelectFilter";
 
@@ -32,10 +32,10 @@ type FuncionarioLogado = {
   perfil: string;
 };
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
+  const [excluindoSelecionadas, setExcluindoSelecionadas] = useState(false);
   const [maquinas, setMaquinas] = useState<MaquinaDetalhada[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -53,14 +53,10 @@ export default function Home() {
 
   const [numeroSerie, setNumeroSerie] = useState("");
   const [setoresSelecionados, setSetoresSelecionados] = useState<string[]>([]);
-  const [usuariosSelecionados, setUsuariosSelecionados] = useState<string[]>(
-    []
-  );
+  const [usuariosSelecionados, setUsuariosSelecionados] = useState<string[]>([]);
   const [tiposSelecionados, setTiposSelecionados] = useState<string[]>([]);
   const [modelosSelecionados, setModelosSelecionados] = useState<string[]>([]);
-  const [contratosSelecionados, setContratosSelecionados] = useState<string[]>(
-    []
-  );
+  const [contratosSelecionados, setContratosSelecionados] = useState<string[]>([]);
   const [origensSelecionadas, setOrigensSelecionadas] = useState<string[]>([]);
 
   const [setores, setSetores] = useState<ItemFiltro[]>([]);
@@ -121,6 +117,55 @@ export default function Home() {
     }
   }
 
+  async function handleExcluirSelecionadas() {
+    if (selecionadas.length === 0) {
+      alert("Selecione pelo menos uma máquina para excluir.");
+      return;
+    }
+
+    const confirmacao = window.prompt(
+      `Você está prestes a excluir ${selecionadas.length} máquina(s).\n\nEssa ação não tem volta.\n\nDigite DELETAR para confirmar.`
+    );
+
+    if (confirmacao !== "DELETAR") {
+      alert('Confirmação inválida. Digite exatamente "DELETAR".');
+      return;
+    }
+
+    try {
+      setExcluindoSelecionadas(true);
+
+      const response = await fetch("/api/maquinas/excluir-selecionadas", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ids: selecionadas,
+          confirmacao,
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.erro || "Erro ao excluir máquinas selecionadas.");
+      }
+
+      alert(
+        `${data?.totalExcluidas ?? selecionadas.length} máquina(s) excluída(s) com sucesso.`
+      );
+
+      setSelecionadas([]);
+      await carregarMaquinas(1);
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível excluir as máquinas selecionadas.");
+    } finally {
+      setExcluindoSelecionadas(false);
+    }
+  }
+
   async function carregarFuncionarioLogado() {
     try {
       const response = await fetch("/api/me");
@@ -150,9 +195,7 @@ export default function Home() {
 
       setoresSelecionados.forEach((item) => params.append("setor", item));
       usuariosSelecionados.forEach((item) => params.append("usuario", item));
-      tiposSelecionados.forEach((item) =>
-        params.append("tipo_equipamento", item)
-      );
+      tiposSelecionados.forEach((item) => params.append("tipo_equipamento", item));
       modelosSelecionados.forEach((item) => params.append("modelo", item));
       contratosSelecionados.forEach((item) => params.append("contrato", item));
       origensSelecionadas.forEach((item) => params.append("origem", item));
@@ -199,7 +242,6 @@ export default function Home() {
     setModelosSelecionados([]);
     setContratosSelecionados([]);
     setOrigensSelecionadas([]);
-    
     setLoading(true);
 
     fetch(`/api/maquinas-detalhadas?page=1&limit=${limit}`)
@@ -426,7 +468,7 @@ export default function Home() {
                 Controle de Máquinas
               </h1>
               <p className="mt-1 text-sm text-slate-500">
-                Gestão de inventário, filtros e exportação de relatórios.
+                Gestão de inventário, filtros, importação e exportação de relatórios.
               </p>
             </div>
 
@@ -437,6 +479,15 @@ export default function Home() {
               >
                 Nova Máquina
               </Link>
+
+              {funcionarioLogado?.perfil === "master" && (
+                <Link
+                  href="/importar-maquinas"
+                  className="inline-flex items-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+                >
+                  Importar CSV
+                </Link>
+              )}
 
               {funcionarioLogado?.perfil === "master" && (
                 <Link
@@ -596,6 +647,14 @@ export default function Home() {
               </button>
 
               <button
+                onClick={handleExcluirSelecionadas}
+                disabled={excluindoSelecionadas || selecionadas.length === 0}
+                className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {excluindoSelecionadas ? "Excluindo..." : "Excluir selecionadas"}
+              </button>
+
+              <button
                 onClick={handleExportarSelecionadas}
                 disabled={exportando || selecionadas.length === 0}
                 className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -722,5 +781,13 @@ export default function Home() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">Carregando...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }
