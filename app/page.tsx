@@ -507,6 +507,13 @@ function HomeContent() {
                 </Link>
               )}
 
+              <Link
+  href="/usuarios"
+  className="inline-flex items-center rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700"
+>
+  Usuários
+</Link>
+
               <button
                 onClick={handleSair}
                 disabled={saindo}
@@ -786,7 +793,13 @@ function HomeContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">Carregando...</div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">
+          Carregando...
+        </div>
+      }
+    >
       <HomeContent />
     </Suspense>
   );
