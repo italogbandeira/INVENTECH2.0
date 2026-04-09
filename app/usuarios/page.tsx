@@ -8,6 +8,7 @@ type Usuario = {
   nome: string;
   login_email: string | null;
   login_maquina: string | null;
+  totalMaquinas: number;
 };
 
 export default function UsuariosPage() {
@@ -79,6 +80,7 @@ export default function UsuariosPage() {
                   <th className="p-4 text-sm font-semibold">Nome</th>
                   <th className="p-4 text-sm font-semibold">Login e-mail</th>
                   <th className="p-4 text-sm font-semibold">Login máquina</th>
+                  <th className="p-4 text-sm font-semibold">Máquinas vinculadas</th>
                   <th className="p-4 text-sm font-semibold">Ações</th>
                 </tr>
               </thead>
@@ -86,28 +88,31 @@ export default function UsuariosPage() {
               <tbody>
                 {usuarios.map((usuario) => (
                   <tr
-                    key={usuario.id}
-                    className="border-t border-slate-200 odd:bg-white even:bg-slate-50"
-                  >
-                    <td className="p-4 text-sm text-slate-700">{usuario.id}</td>
-                    <td className="p-4 text-sm font-medium text-slate-900">
-                      {usuario.nome}
-                    </td>
-                    <td className="p-4 text-sm text-slate-700">
-                      {usuario.login_email || "-"}
-                    </td>
-                    <td className="p-4 text-sm text-slate-700">
-                      {usuario.login_maquina || "-"}
-                    </td>
-                    <td className="p-4">
-                      <Link
-                        href={`/usuarios/${usuario.id}`}
-                        className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
-                      >
-                        Ver
-                      </Link>
-                    </td>
-                  </tr>
+  key={usuario.id}
+  className="border-t border-slate-200 odd:bg-white even:bg-slate-50"
+>
+  <td className="p-4 text-sm text-slate-700">{usuario.id}</td>
+  <td className="p-4 text-sm font-medium text-slate-900">
+    {usuario.nome}
+  </td>
+  <td className="p-4 text-sm text-slate-700">
+    {usuario.login_email || "-"}
+  </td>
+  <td className="p-4 text-sm text-slate-700">
+    {usuario.login_maquina || "-"}
+  </td>
+  <td className="p-4 text-sm text-slate-700">
+    {usuario.totalMaquinas}
+  </td>
+  <td className="p-4">
+    <Link
+      href={`/usuarios/${usuario.id}`}
+      className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+    >
+      Ver
+    </Link>
+  </td>
+</tr>
                 ))}
 
                 {!loading && usuarios.length === 0 && (
