@@ -22,6 +22,15 @@ type MaquinaVinculada = {
   usuario_id?: number | null;
 };
 
+type DocumentoUsuario = {
+  id: number;
+  usuarioId: number;
+  tipo: string;
+  nomeArquivo: string;
+  caminho: string;
+  createdAt: string;
+};
+
 type Props = {
   params: Promise<{ id: string }>;
 };
@@ -34,9 +43,22 @@ export default function UsuarioDetalhePage({ params }: Props) {
     MaquinaVinculada[]
   >([]);
   const [maquinaSelecionada, setMaquinaSelecionada] = useState("");
+  const [documentos, setDocumentos] = useState<DocumentoUsuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [salvandoVinculo, setSalvandoVinculo] = useState(false);
+  const [uploadingTipo, setUploadingTipo] = useState<string | null>(null);
   const [erro, setErro] = useState("");
+
+  async function carregarDocumentos(id: string) {
+    const response = await fetch(`/api/usuarios/${id}/documentos`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.erro || "Erro ao carregar documentos.");
+    }
+
+    setDocumentos(Array.isArray(data.documentos) ? data.documentos : []);
+  }
 
   async function carregarDetalhe() {
     try {
@@ -64,16 +86,21 @@ export default function UsuarioDetalhePage({ params }: Props) {
       }
 
       setUsuario(usuarioData.usuario ?? null);
-      setMaquinas(Array.isArray(maquinasData.vinculadas) ? maquinasData.vinculadas : []);
+      setMaquinas(
+        Array.isArray(maquinasData.vinculadas) ? maquinasData.vinculadas : []
+      );
       setMaquinasDisponiveis(
         Array.isArray(maquinasData.disponiveis) ? maquinasData.disponiveis : []
       );
+
+      await carregarDocumentos(id);
     } catch (error) {
       console.error(error);
       setErro("Não foi possível carregar o detalhe do usuário.");
       setUsuario(null);
       setMaquinas([]);
       setMaquinasDisponiveis([]);
+      setDocumentos([]);
     } finally {
       setLoading(false);
     }
@@ -152,6 +179,67 @@ export default function UsuarioDetalhePage({ params }: Props) {
     }
   }
 
+  async function handleUploadDocumento(tipo: string, file: File | null) {
+    if (!file || !usuarioId) return;
+
+    try {
+      setUploadingTipo(tipo);
+
+      const formData = new FormData();
+      formData.append("tipo", tipo);
+      formData.append("arquivo", file);
+
+      const response = await fetch(`/api/usuarios/${usuarioId}/documentos`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.erro || "Erro ao enviar documento.");
+      }
+
+      await carregarDetalhe();
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível enviar o documento.");
+    } finally {
+      setUploadingTipo(null);
+    }
+  }
+
+  async function handleRemoverDocumento(documentoId: number) {
+    if (!usuarioId) return;
+
+    const confirmar = window.confirm("Deseja remover este documento?");
+    if (!confirmar) return;
+
+    try {
+      const response = await fetch(
+        `/api/usuarios/${usuarioId}/documentos/${documentoId}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.erro || "Erro ao remover documento.");
+      }
+
+      await carregarDetalhe();
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível remover o documento.");
+    }
+  }
+
+  function obterDocumentoPorTipo(tipo: string) {
+    return documentos.find((documento) => documento.tipo === tipo) ?? null;
+  }
+
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -162,7 +250,8 @@ export default function UsuarioDetalhePage({ params }: Props) {
                 Detalhe do usuário
               </h1>
               <p className="mt-1 text-sm text-slate-500">
-                Visualize as informações do usuário e as máquinas vinculadas.
+                Visualize as informações do usuário, as máquinas vinculadas e os
+                documentos anexados.
               </p>
             </div>
 
@@ -218,7 +307,9 @@ export default function UsuarioDetalhePage({ params }: Props) {
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Nome
                     </p>
-                    <p className="mt-1 text-sm text-slate-900">{usuario.nome}</p>
+                    <p className="mt-1 text-sm text-slate-900">
+                      {usuario.nome}
+                    </p>
                   </div>
 
                   <div>
@@ -270,8 +361,9 @@ export default function UsuarioDetalhePage({ params }: Props) {
                   <option value="">Selecione uma máquina</option>
                   {maquinasDisponiveis.map((maquina) => (
                     <option key={maquina.id} value={maquina.id}>
-  {maquina.numero_serie} — {maquina.setor} — {maquina.tipo_equipamento} — {maquina.modelo}
-</option>
+                      {maquina.numero_serie} — {maquina.setor} —{" "}
+                      {maquina.tipo_equipamento} — {maquina.modelo}
+                    </option>
                   ))}
                 </select>
 
@@ -300,7 +392,9 @@ export default function UsuarioDetalhePage({ params }: Props) {
                   <thead className="bg-slate-900 text-left text-white">
                     <tr>
                       <th className="p-4 text-sm font-semibold">ID</th>
-                      <th className="p-4 text-sm font-semibold">Número de série</th>
+                      <th className="p-4 text-sm font-semibold">
+                        Número de série
+                      </th>
                       <th className="p-4 text-sm font-semibold">Setor</th>
                       <th className="p-4 text-sm font-semibold">Tipo</th>
                       <th className="p-4 text-sm font-semibold">Modelo</th>
@@ -317,22 +411,37 @@ export default function UsuarioDetalhePage({ params }: Props) {
                         key={maquina.id}
                         className="border-t border-slate-200 odd:bg-white even:bg-slate-50"
                       >
-                        <td className="p-4 text-sm text-slate-700">{maquina.id}</td>
+                        <td className="p-4 text-sm text-slate-700">
+                          {maquina.id}
+                        </td>
                         <td className="p-4 text-sm font-medium text-slate-900">
                           {maquina.numero_serie}
                         </td>
-                        <td className="p-4 text-sm text-slate-700">{maquina.setor}</td>
+                        <td className="p-4 text-sm text-slate-700">
+                          {maquina.setor}
+                        </td>
                         <td className="p-4 text-sm text-slate-700">
                           {maquina.tipo_equipamento}
                         </td>
-                        <td className="p-4 text-sm text-slate-700">{maquina.modelo}</td>
-                        <td className="p-4 text-sm text-slate-700">{maquina.contrato}</td>
-                        <td className="p-4 text-sm text-slate-700">{maquina.origem}</td>
-                        <td className="p-4 text-sm text-slate-700">{maquina.esset}</td>
+                        <td className="p-4 text-sm text-slate-700">
+                          {maquina.modelo}
+                        </td>
+                        <td className="p-4 text-sm text-slate-700">
+                          {maquina.contrato}
+                        </td>
+                        <td className="p-4 text-sm text-slate-700">
+                          {maquina.origem}
+                        </td>
+                        <td className="p-4 text-sm text-slate-700">
+                          {maquina.esset}
+                        </td>
                         <td className="p-4">
                           <button
                             onClick={() =>
-                              handleRemoverVinculo(maquina.id, maquina.numero_serie)
+                              handleRemoverVinculo(
+                                maquina.id,
+                                maquina.numero_serie
+                              )
                             }
                             disabled={salvandoVinculo}
                             className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -373,30 +482,93 @@ export default function UsuarioDetalhePage({ params }: Props) {
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <h2 className="text-lg font-semibold text-slate-900">Documentos</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Área preparada para os anexos do usuário.
+            Faça upload e gerencie os anexos do usuário.
           </p>
 
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-dashed border-slate-300 p-4">
-              <p className="text-sm font-medium text-slate-800">
-                Termo de Cessão de Equip - Tempo Indeterminado
-              </p>
-              <p className="mt-2 text-sm text-slate-500">Em construção.</p>
-            </div>
+            {[
+              {
+                tipo: "cessao_indeterminada",
+                titulo: "Termo de Cessão de Equip - Tempo Indeterminado",
+              },
+              {
+                tipo: "devolucao_equipamento",
+                titulo: "Termo de Devolução de Equipamento",
+              },
+              {
+                tipo: "cessao_temporaria",
+                titulo: "Termo de Cessão Temporária de Equipamento",
+              },
+            ].map((item) => {
+              const documento = obterDocumentoPorTipo(item.tipo);
 
-            <div className="rounded-2xl border border-dashed border-slate-300 p-4">
-              <p className="text-sm font-medium text-slate-800">
-                Termo de Devolução de Equipamento
-              </p>
-              <p className="mt-2 text-sm text-slate-500">Em construção.</p>
-            </div>
+              return (
+                <div
+                  key={item.tipo}
+                  className="rounded-2xl border border-dashed border-slate-300 p-4"
+                >
+                  <p className="text-sm font-medium text-slate-800">
+                    {item.titulo}
+                  </p>
 
-            <div className="rounded-2xl border border-dashed border-slate-300 p-4">
-              <p className="text-sm font-medium text-slate-800">
-                Termo de Cessão Temporária de Equipamento
-              </p>
-              <p className="mt-2 text-sm text-slate-500">Em construção.</p>
-            </div>
+                  {documento ? (
+                    <div className="mt-3 space-y-2">
+                      <a
+                        href={documento.caminho}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block text-sm font-medium text-blue-600 hover:underline"
+                      >
+                        {documento.nomeArquivo}
+                      </a>
+
+                      <p className="text-xs text-slate-500">
+                        Enviado em{" "}
+                        {new Date(documento.createdAt).toLocaleString("pt-BR")}
+                      </p>
+
+                      <button
+                        onClick={() => handleRemoverDocumento(documento.id)}
+                        className="rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700"
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      <div className="mt-3 space-y-2">
+  <label className="inline-flex cursor-pointer items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+    Escolher arquivo
+    <input
+      type="file"
+      accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+      className="hidden"
+      onChange={(e) =>
+        handleUploadDocumento(
+          item.tipo,
+          e.target.files?.[0] ?? null
+        )
+      }
+    />
+  </label>
+
+  <p className="text-xs text-slate-500">
+    {uploadingTipo === item.tipo
+      ? "Enviando documento..."
+      : "Nenhum documento anexado."}
+  </p>
+</div>
+
+                      <p className="text-xs text-slate-500">
+                        {uploadingTipo === item.tipo
+                          ? "Enviando documento..."
+                          : "Nenhum documento anexado."}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
       </div>

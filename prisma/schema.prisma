@@ -118,3 +118,16 @@ model AuditoriaLog {
 
   @@map("auditoria_logs")
 }
+
+model UsuarioDocumento {
+  id          Int      @id @default(autoincrement())
+  usuarioId   Int      @map("usuario_id")
+  tipo        String   @db.VarChar(100)
+  nomeArquivo String   @map("nome_arquivo") @db.VarChar(255)
+  caminho     String   @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([usuarioId])
+  @@index([tipo])
+  @@map("usuarios_documentos")
+}
