@@ -5,10 +5,24 @@ import { prisma } from "@/lib/prisma";
 import { exigeLogin } from "@/lib/auth";
 import { criarLogAuditoria } from "@/lib/auditoria";
 
+/**
+ * Parâmetros dinâmicos esperados pela rota.
+ */
 type ContextoParams = {
   params: Promise<{ id: string; documentoId: string }>;
 };
 
+/**
+ * DELETE /api/usuarios/[id]/documentos/[documentoId]
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar IDs
+ * - validar usuário e documento
+ * - apagar arquivo físico, se existir
+ * - apagar registro no banco
+ * - registrar auditoria
+ */
 export async function DELETE(_req: NextRequest, context: ContextoParams) {
   try {
     const funcionario = await exigeLogin();
@@ -49,15 +63,26 @@ export async function DELETE(_req: NextRequest, context: ContextoParams) {
       );
     }
 
+    /**
+     * Constrói o caminho absoluto do arquivo salvo no disco.
+     */
     const caminhoAbsoluto = path.join(
       process.cwd(),
       "public",
       documento.caminho.replace(/^\//, "")
     );
 
+    /**
+     * Tenta remover o arquivo físico.
+     *
+     * Se falhar, a exclusão lógica no banco continua.
+     * Isso evita travar a operação caso o arquivo já tenha sido removido
+     * manualmente ou esteja indisponível.
+     */
     try {
       await unlink(caminhoAbsoluto);
     } catch {
+      // Falha silenciosa intencional.
     }
 
     await prisma.usuarioDocumento.delete({

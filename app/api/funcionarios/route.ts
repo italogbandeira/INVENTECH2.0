@@ -4,6 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { exigeMaster } from "@/lib/auth";
 import { criarLogAuditoria } from "@/lib/auditoria";
 
+/**
+ * Gera um snapshot enxuto do funcionário para auditoria.
+ *
+ * Isso evita salvar o objeto inteiro do Prisma e padroniza
+ * o formato de antes/depois nos logs.
+ */
 function snapshotFuncionario(funcionario: {
   id: number;
   nome: string;
@@ -20,6 +26,18 @@ function snapshotFuncionario(funcionario: {
   };
 }
 
+/**
+ * POST /api/funcionarios
+ *
+ * Responsabilidades:
+ * - exigir acesso master
+ * - validar payload
+ * - validar perfil permitido
+ * - impedir email duplicado
+ * - hash de senha
+ * - criar funcionário
+ * - registrar auditoria
+ */
 export async function POST(req: Request) {
   try {
     const logado = await exigeMaster();
@@ -52,6 +70,9 @@ export async function POST(req: Request) {
       );
     }
 
+    /**
+     * Nunca salva senha em texto puro.
+     */
     const senhaHash = await bcrypt.hash(senha, 10);
 
     const funcionario = await prisma.funcionario.create({

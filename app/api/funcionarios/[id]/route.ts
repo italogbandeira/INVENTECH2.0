@@ -8,6 +8,11 @@ type Params = {
   params: Promise<{ id: string }>;
 };
 
+/**
+ * Busca um funcionário pelo ID.
+ *
+ * Função auxiliar para evitar repetição no PATCH e DELETE.
+ */
 async function buscarFuncionarioOuErro(id: number) {
   const funcionario = await prisma.funcionario.findUnique({
     where: { id },
@@ -20,6 +25,9 @@ async function buscarFuncionarioOuErro(id: number) {
   return funcionario;
 }
 
+/**
+ * Snapshot enxuto usado nos logs de auditoria.
+ */
 function snapshotFuncionario(funcionario: {
   id: number;
   nome: string;
@@ -36,6 +44,10 @@ function snapshotFuncionario(funcionario: {
   };
 }
 
+/**
+ * Extrai apenas os campos necessários do usuário logado
+ * para registro de auditoria.
+ */
 function autorAuditoria(logado: {
   id: number;
   nome: string;
@@ -49,6 +61,16 @@ function autorAuditoria(logado: {
   };
 }
 
+/**
+ * PATCH /api/funcionarios/[id]
+ *
+ * Esta rota é multipropósito e usa body.acao para decidir o fluxo.
+ *
+ * Ações suportadas:
+ * - inativar
+ * - editar
+ * - redefinirSenha
+ */
 export async function PATCH(req: Request, { params }: Params) {
   try {
     const logado = await exigeMaster();
@@ -71,6 +93,9 @@ export async function PATCH(req: Request, { params }: Params) {
     const body = await req.json();
     const acao = body?.acao;
 
+    /**
+     * Fluxo: inativar funcionário.
+     */
     if (acao === "inativar") {
       if (funcionario.id === logado.id) {
         return NextResponse.json(
@@ -106,6 +131,9 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ sucesso: true });
     }
 
+    /**
+     * Fluxo: editar dados básicos.
+     */
     if (acao === "editar") {
       const nome = body?.nome?.trim();
       const email = body?.email?.trim().toLowerCase();
@@ -139,6 +167,9 @@ export async function PATCH(req: Request, { params }: Params) {
         );
       }
 
+      /**
+       * Evita que o próprio master remova seu próprio perfil master.
+       */
       if (funcionario.id === logado.id && perfil !== "master") {
         return NextResponse.json(
           { erro: "Você não pode remover seu próprio perfil master." },
@@ -146,6 +177,9 @@ export async function PATCH(req: Request, { params }: Params) {
         );
       }
 
+      /**
+       * Evita remover o último master ativo do sistema.
+       */
       if (funcionario.perfil === "master" && perfil !== "master") {
         const totalMasters = await prisma.funcionario.count({
           where: { perfil: "master", ativo: true },
@@ -183,57 +217,64 @@ export async function PATCH(req: Request, { params }: Params) {
       return NextResponse.json({ sucesso: true, funcionario: atualizado });
     }
 
+    /**
+     * Fluxo: redefinir senha.
+     *
+     * Observação:
+     * por regra atual, senha de usuário master não pode ser redefinida
+     * por esta tela.
+     */
     if (acao === "redefinirSenha") {
-  console.log("Redefinir senha de:", {
-    id: funcionario.id,
-    nome: funcionario.nome,
-    perfil: funcionario.perfil,
-  });
+      console.log("Redefinir senha de:", {
+        id: funcionario.id,
+        nome: funcionario.nome,
+        perfil: funcionario.perfil,
+      });
 
-  if (funcionario.perfil === "master") {
-    console.log("BLOQUEANDO MASTER");
-    return NextResponse.json(
-      {
-        erro: "Não é permitido redefinir a senha de um usuário master por esta tela.",
-      },
-      { status: 400 }
-    );
-  }
+      if (funcionario.perfil === "master") {
+        console.log("BLOQUEANDO MASTER");
+        return NextResponse.json(
+          {
+            erro: "Não é permitido redefinir a senha de um usuário master por esta tela.",
+          },
+          { status: 400 }
+        );
+      }
 
-  console.log("PASSOU DA TRAVA MASTER");
+      console.log("PASSOU DA TRAVA MASTER");
 
-  const novaSenha = body?.novaSenha;
+      const novaSenha = body?.novaSenha;
 
-  if (!novaSenha || String(novaSenha).trim().length < 6) {
-    return NextResponse.json(
-      { erro: "A nova senha deve ter pelo menos 6 caracteres." },
-      { status: 400 }
-    );
-  }
+      if (!novaSenha || String(novaSenha).trim().length < 6) {
+        return NextResponse.json(
+          { erro: "A nova senha deve ter pelo menos 6 caracteres." },
+          { status: 400 }
+        );
+      }
 
-  const antes = snapshotFuncionario(funcionario);
-  const senhaHash = await bcrypt.hash(novaSenha, 10);
+      const antes = snapshotFuncionario(funcionario);
+      const senhaHash = await bcrypt.hash(novaSenha, 10);
 
-  await prisma.funcionario.update({
-    where: { id: funcionarioId },
-    data: { senhaHash },
-  });
+      await prisma.funcionario.update({
+        where: { id: funcionarioId },
+        data: { senhaHash },
+      });
 
-  await criarLogAuditoria({
-    entidade: "funcionario",
-    entidadeId: funcionarioId,
-    acao: "redefinicao_senha",
-    funcionario: autorAuditoria(logado),
-    descricao: `Redefiniu a senha do funcionário ${funcionario.nome}`,
-    antes,
-    depois: {
-      ...antes,
-      senha: "REDEFINIDA",
-    },
-  });
+      await criarLogAuditoria({
+        entidade: "funcionario",
+        entidadeId: funcionarioId,
+        acao: "redefinicao_senha",
+        funcionario: autorAuditoria(logado),
+        descricao: `Redefiniu a senha do funcionário ${funcionario.nome}`,
+        antes,
+        depois: {
+          ...antes,
+          senha: "REDEFINIDA",
+        },
+      });
 
-  return NextResponse.json({ sucesso: true });
-}
+      return NextResponse.json({ sucesso: true });
+    }
 
     return NextResponse.json({ erro: "Ação inválida." }, { status: 400 });
   } catch (error) {
@@ -253,6 +294,17 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
+/**
+ * DELETE /api/funcionarios/[id]
+ *
+ * Responsabilidades:
+ * - exigir acesso master
+ * - validar confirmação textual
+ * - impedir exclusão da própria conta
+ * - impedir exclusão de master
+ * - excluir funcionário
+ * - registrar auditoria
+ */
 export async function DELETE(req: Request, { params }: Params) {
   try {
     const logado = await exigeMaster();

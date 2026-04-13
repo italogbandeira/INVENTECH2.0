@@ -2,6 +2,14 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 
+/**
+ * Script utilitário para resetar a senha de um funcionário master.
+ *
+ * Uso comum:
+ * - recuperação de acesso em ambiente local
+ * - suporte administrativo
+ * - setup inicial
+ */
 async function main() {
   const email = "italogabrie33@gmail.com";
   const novaSenha = "Rogusbr123";

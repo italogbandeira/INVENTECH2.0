@@ -1,12 +1,18 @@
+/// Gerador do cliente Prisma.
+/// O client é gerado dentro de app/generated/prisma.
 generator client {
   provider = "prisma-client"
   output   = "../app/generated/prisma"
 }
 
+/// Fonte de dados principal.
+/// Apesar de o provider ser mysql, ele também atende MariaDB nesse contexto.
 datasource db {
   provider = "mysql"
 }
 
+/// Tabela usada como base temporária/importação bruta de máquinas.
+/// Provavelmente serve como staging antes da normalização nas tabelas finais.
 model base_maquinas_import {
   id                            Int     @id @default(autoincrement())
   numero_serie                  String? @db.VarChar(255)
@@ -24,11 +30,17 @@ model base_maquinas_import {
   numero_termo_responsabilidade String? @db.VarChar(255)
 }
 
+/// Tabela de contratos disponíveis para vincular às máquinas.
 model contratos {
   id   Int    @id @default(autoincrement())
   nome String @unique(map: "nome") @db.VarChar(150)
 }
 
+/// Tabela principal de máquinas do sistema.
+///
+/// Observação:
+/// Existem chaves estrangeiras implícitas no banco via IDs,
+/// mas neste schema ainda não foram modeladas todas as relações Prisma.
 model maquinas {
   id                            Int     @id @default(autoincrement())
   numero_serie                  String  @unique(map: "uq_maquinas_numero_serie") @db.VarChar(255)
@@ -51,7 +63,8 @@ model maquinas {
   @@index([usuario_id], map: "fk_maquinas_usuario")
 }
 
-
+/// Funcionários que acessam o sistema.
+/// Inclui autenticação e perfil de permissão.
 model Funcionario {
   id            Int            @id @default(autoincrement())
   nome          String         @db.VarChar(150)
@@ -62,31 +75,38 @@ model Funcionario {
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
+  /// Relação reversa com logs de auditoria.
   auditoriaLogs AuditoriaLog[]
 
   @@map("funcionarios")
 }
 
+/// Catálogo de modelos de equipamento.
 model modelos {
   id   Int    @id @default(autoincrement())
   nome String @unique(map: "nome") @db.VarChar(150)
 }
 
+/// Catálogo de origens.
 model origens {
   id   Int    @id @default(autoincrement())
   nome String @unique(map: "nome") @db.VarChar(100)
 }
 
+/// Catálogo de setores.
 model setores {
   id   Int    @id @default(autoincrement())
   nome String @unique(map: "nome") @db.VarChar(100)
 }
 
+/// Catálogo de tipos de equipamento.
 model tipos_equipamento {
   id   Int    @id @default(autoincrement())
   nome String @unique(map: "nome") @db.VarChar(100)
 }
 
+/// Usuários finais que recebem/vinculam máquinas.
+/// Não são os mesmos "funcionários" que fazem login no sistema.
 model usuarios {
   id            Int     @id @default(autoincrement())
   nome          String  @db.VarChar(150)
@@ -94,7 +114,14 @@ model usuarios {
   login_maquina String? @db.VarChar(150)
 }
 
-
+/// Log de auditoria do sistema.
+///
+/// Armazena:
+/// - entidade afetada
+/// - ação executada
+/// - responsável
+/// - descrição legível
+/// - estado antes/depois da mudança
 model AuditoriaLog {
   id              Int          @id @default(autoincrement())
   entidade        String       @db.VarChar(50)
@@ -119,6 +146,10 @@ model AuditoriaLog {
   @@map("auditoria_logs")
 }
 
+/// Documentos anexados a um usuário.
+///
+/// Cada registro representa um arquivo salvo no storage local,
+/// com o caminho relativo para acesso.
 model UsuarioDocumento {
   id          Int      @id @default(autoincrement())
   usuarioId   Int      @map("usuario_id")

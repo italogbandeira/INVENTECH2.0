@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+/**
+ * Estrutura mínima de um contrato retornado pela consulta.
+ */
 type Contrato = {
   id: number;
   nome: string;
 };
 
+/**
+ * GET /api/contratos
+ *
+ * Responsabilidades:
+ * - buscar contratos cadastrados
+ * - ordenar alfabeticamente por nome
+ * - retornar lista simples para filtros e selects
+ */
 export async function GET() {
   try {
     const contratos = await prisma.$queryRaw<Contrato[]>`

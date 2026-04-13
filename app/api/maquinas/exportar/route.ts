@@ -3,6 +3,11 @@ import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { exigeLogin } from "@/lib/auth";
 
+/**
+ * Estrutura da linha exportada para Excel.
+ *
+ * Já vem com os nomes amigáveis resultantes dos JOINs.
+ */
 type LinhaMaquina = {
   id: number;
   numero_serie: string;
@@ -18,6 +23,18 @@ type LinhaMaquina = {
   numero_termo_responsabilidade: string | null;
 };
 
+/**
+ * POST /api/maquinas/exportar
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - receber filtros da tela
+ * - exportar:
+ *   - apenas máquinas selecionadas
+ *   - ou tudo que bate no filtro
+ * - gerar arquivo Excel em memória
+ * - devolver o arquivo como download
+ */
 export async function POST(req: Request) {
   try {
     await exigeLogin();
@@ -43,6 +60,10 @@ export async function POST(req: Request) {
           .filter((id: number) => !Number.isNaN(id))
       : [];
 
+    /**
+     * Se não for exportação total filtrada,
+     * então deve haver pelo menos uma máquina marcada.
+     */
     if (!exportarTudoFiltrado && idsSelecionados.length === 0) {
       return NextResponse.json(
         { erro: "Nenhuma máquina selecionada para exportação." },
@@ -50,6 +71,9 @@ export async function POST(req: Request) {
       );
     }
 
+    /**
+     * Montagem dinâmica dos filtros SQL.
+     */
     const conditions: string[] = [];
     const values: (string | number)[] = [];
 
@@ -94,6 +118,9 @@ export async function POST(req: Request) {
       values.push(...origens);
     }
 
+    /**
+     * Quando não é "tudo filtrado", restringe pelos IDs selecionados.
+     */
     if (!exportarTudoFiltrado) {
       const placeholders = idsSelecionados.map(() => "?").join(", ");
       conditions.push(`m.id IN (${placeholders})`);
@@ -103,6 +130,9 @@ export async function POST(req: Request) {
     const whereClause =
       conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
+    /**
+     * Consulta SQL com JOINs para gerar a planilha já amigável.
+     */
     const maquinas = await prisma.$queryRawUnsafe<LinhaMaquina[]>(
       `
       SELECT
@@ -131,9 +161,15 @@ export async function POST(req: Request) {
       ...values
     );
 
+    /**
+     * Cria workbook e worksheet em memória.
+     */
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Máquinas");
 
+    /**
+     * Define colunas, cabeçalhos e larguras.
+     */
     sheet.columns = [
       { header: "ID", key: "id", width: 10 },
       { header: "Número de Série", key: "numero_serie", width: 24 },
@@ -159,6 +195,9 @@ export async function POST(req: Request) {
 
     sheet.getRow(1).font = { bold: true };
 
+    /**
+     * Preenche as linhas da planilha.
+     */
     maquinas.forEach((maquina) => {
       sheet.addRow({
         id: maquina.id,

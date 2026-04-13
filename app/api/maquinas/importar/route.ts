@@ -4,6 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { exigeMaster } from "@/lib/auth";
 import { criarLogAuditoria } from "@/lib/auditoria";
 
+/**
+ * Estrutura esperada de cada linha do CSV importado.
+ *
+ * Os nomes das colunas já são os nomes normalizados após o parser.
+ */
 type LinhaCsv = {
   serial?: string;
   criado_em?: string;
@@ -18,15 +23,29 @@ type LinhaCsv = {
   origem?: string;
 };
 
+/**
+ * Converte valores vazios para null.
+ */
 function textoOuNull(valor: unknown) {
   const texto = String(valor ?? "").trim();
   return texto ? texto : null;
 }
 
+/**
+ * Retorna texto obrigatório já com trim.
+ */
 function textoObrigatorio(valor: unknown) {
   return String(valor ?? "").trim();
 }
 
+/**
+ * Normaliza cabeçalhos do CSV:
+ * - remove acentos
+ * - trim
+ * - lowercase
+ *
+ * Isso ajuda a aceitar arquivos com pequenas variações no cabeçalho.
+ */
 function normalizarCabecalho(texto: string) {
   return texto
     .normalize("NFD")
@@ -35,6 +54,9 @@ function normalizarCabecalho(texto: string) {
     .toLowerCase();
 }
 
+/**
+ * Snapshot de máquina para auditoria.
+ */
 function snapshotMaquina(maquina: {
   id: number;
   numero_serie: string;
@@ -65,6 +87,9 @@ function snapshotMaquina(maquina: {
   };
 }
 
+/**
+ * Extrai dados mínimos do autor da importação para auditoria.
+ */
 function autorAuditoria(logado: {
   id: number;
   nome: string;
@@ -78,6 +103,15 @@ function autorAuditoria(logado: {
   };
 }
 
+/**
+ * Helpers de "buscar ou criar" para os catálogos auxiliares.
+ *
+ * Estratégia:
+ * - se existir, retorna ID existente
+ * - se não existir, cria e retorna o novo ID
+ *
+ * Isso permite que a importação alimente automaticamente os catálogos.
+ */
 async function buscarOuCriarSetor(nome: string | null) {
   if (!nome) return null;
 
@@ -174,6 +208,19 @@ async function buscarOuCriarOrigem(nome: string | null) {
   return criado.id;
 }
 
+/**
+ * POST /api/maquinas/importar
+ *
+ * Responsabilidades:
+ * - exigir acesso master
+ * - receber CSV via multipart/form-data
+ * - decodificar e interpretar o arquivo
+ * - validar colunas mínimas
+ * - criar ou atualizar máquinas
+ * - alimentar catálogos auxiliares automaticamente
+ * - registrar auditoria das criações e atualizações
+ * - devolver resumo da importação
+ */
 export async function POST(req: Request) {
   try {
     const logado = await exigeMaster();
@@ -189,12 +236,26 @@ export async function POST(req: Request) {
 
     const bytes = new Uint8Array(await arquivo.arrayBuffer());
 
-let conteudo = new TextDecoder("utf-8").decode(bytes);
+    /**
+     * Primeiro tenta UTF-8.
+     * Se aparecer caractere quebrado, tenta Windows-1252.
+     *
+     * Isso ajuda bastante com CSV exportado de Excel antigo.
+     */
+    let conteudo = new TextDecoder("utf-8").decode(bytes);
 
-if (conteudo.includes("�")) {
-  conteudo = new TextDecoder("windows-1252").decode(bytes);
-}
+    if (conteudo.includes("�")) {
+      conteudo = new TextDecoder("windows-1252").decode(bytes);
+    }
 
+    /**
+     * Faz parse do CSV.
+     *
+     * Regras atuais:
+     * - delimitador ;
+     * - cabeçalho normalizado
+     * - ignora linhas vazias
+     */
     const linhas = parse(conteudo, {
       columns: (header: string[]) => header.map(normalizarCabecalho),
       delimiter: ";",
@@ -204,6 +265,9 @@ if (conteudo.includes("�")) {
       relax_column_count: true,
     }) as LinhaCsv[];
 
+    /**
+     * Valida colunas mínimas obrigatórias para processar o arquivo.
+     */
     const colunasObrigatorias = ["serial", "setor"];
     const primeiraLinha = linhas[0] ?? {};
     const colunasEncontradas = Object.keys(primeiraLinha);
@@ -221,6 +285,9 @@ if (conteudo.includes("�")) {
       );
     }
 
+    /**
+     * Acumulador de resultado final exibido na UI.
+     */
     const resultado = {
       total: linhas.length,
       criadas: 0,
@@ -229,6 +296,12 @@ if (conteudo.includes("�")) {
       erros: [] as Array<{ linha: number; erro: string }>,
     };
 
+    /**
+     * Processa o CSV linha a linha.
+     *
+     * index + 2:
+     * soma 2 porque index começa em 0 e o CSV tem cabeçalho na linha 1.
+     */
     for (let index = 0; index < linhas.length; index++) {
       const linha = linhas[index];
 
@@ -252,6 +325,9 @@ if (conteudo.includes("�")) {
           continue;
         }
 
+        /**
+         * Resolve ou cria os relacionamentos necessários.
+         */
         const setorId = await buscarOuCriarSetor(setorNome);
         const usuarioId = await buscarOuCriarUsuario(textoOuNull(linha.usuario));
         const tipoEquipamentoId = await buscarOuCriarTipoEquipamento(
@@ -261,6 +337,10 @@ if (conteudo.includes("�")) {
         const contratoId = await buscarOuCriarContrato(textoOuNull(linha.contrato));
         const origemId = await buscarOuCriarOrigem(textoOuNull(linha.origem));
 
+        /**
+         * Payload padronizado que será usado tanto para criação
+         * quanto para atualização.
+         */
         const payload = {
           numero_serie: numeroSerie,
           setor_id: setorId!,
@@ -279,6 +359,10 @@ if (conteudo.includes("�")) {
           where: { numero_serie: numeroSerie },
         });
 
+        /**
+         * Se não existir máquina com esse número de série,
+         * cria um novo registro.
+         */
         if (!existente) {
           const criada = await prisma.maquinas.create({
             data: payload,
@@ -300,6 +384,10 @@ if (conteudo.includes("�")) {
 
         const antes = snapshotMaquina(existente);
 
+        /**
+         * Verifica se houve mudança real.
+         * Se nada mudou, conta como ignorada.
+         */
         const mudou =
           existente.numero_serie !== payload.numero_serie ||
           existente.setor_id !== payload.setor_id ||
@@ -319,6 +407,9 @@ if (conteudo.includes("�")) {
           continue;
         }
 
+        /**
+         * Atualiza máquina existente.
+         */
         const atualizada = await prisma.maquinas.update({
           where: { id: existente.id },
           data: payload,

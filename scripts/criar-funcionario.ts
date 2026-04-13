@@ -1,6 +1,19 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 
+/**
+ * Script utilitário para criar um funcionário master padrão.
+ *
+ * Uso ideal:
+ * - ambiente local
+ * - bootstrap inicial do sistema
+ * - testes de acesso administrativo
+ *
+ * Observação:
+ * hoje os dados estão fixos no arquivo.
+ * Em produção, o ideal é ler isso de variáveis de ambiente
+ * ou de argumentos de linha de comando.
+ */
 async function main() {
   const email = "aldemir@empresa.com";
 

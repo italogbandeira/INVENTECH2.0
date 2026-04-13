@@ -1,10 +1,33 @@
 "use client";
 
+/**
+ * Página principal de controle de máquinas.
+ *
+ * Responsabilidades desta tela:
+ * - Carregar listagem paginada de máquinas detalhadas
+ * - Carregar filtros auxiliares (setores, usuários, tipos, etc.)
+ * - Permitir filtrar a listagem
+ * - Permitir seleção em massa
+ * - Permitir exclusão em lote
+ * - Permitir exportação de selecionadas ou de todo o resultado filtrado
+ * - Exibir ações rápidas para outras áreas do sistema
+ * - Controlar logout do usuário logado
+ *
+ * Observação:
+ * Esta página foi originalmente usada como home operacional do sistema.
+ * Mesmo que futuramente exista um dashboard separado, este arquivo ainda
+ * representa a tela operacional principal de inventário.
+ */
+
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import MultiSelectFilter from "@/components/MultiSelectFilter";
 
+/**
+ * Estrutura da máquina detalhada retornada pela API.
+ * Esta tipagem representa a linha exibida na tabela principal.
+ */
 type MaquinaDetalhada = {
   id: number;
   numero_serie: string;
@@ -20,11 +43,18 @@ type MaquinaDetalhada = {
   numero_termo_responsabilidade: string | null;
 };
 
+/**
+ * Estrutura genérica usada pelos filtros de múltipla seleção.
+ */
 type ItemFiltro = {
   id: number;
   nome: string;
 };
 
+/**
+ * Estrutura básica do funcionário logado.
+ * Usada principalmente para controle de permissões visuais na UI.
+ */
 type FuncionarioLogado = {
   id: number;
   nome: string;
@@ -35,30 +65,63 @@ type FuncionarioLogado = {
 function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [excluindoSelecionadas, setExcluindoSelecionadas] = useState(false);
-  const [maquinas, setMaquinas] = useState<MaquinaDetalhada[]>([]);
+
+  /**
+   * Estados de controle geral da página.
+   */
   const [loading, setLoading] = useState(true);
+  const [saindo, setSaindo] = useState(false);
+  const [exportando, setExportando] = useState(false);
+  const [excluindoSelecionadas, setExcluindoSelecionadas] = useState(false);
+
+  /**
+   * Dados principais da listagem.
+   */
+  const [maquinas, setMaquinas] = useState<MaquinaDetalhada[]>([]);
+  const [selecionadas, setSelecionadas] = useState<number[]>([]);
+
+  /**
+   * Estados de paginação.
+   */
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+
+  /**
+   * Usuário/funcionário autenticado.
+   * Necessário para liberar botões apenas para perfil master.
+   */
   const [funcionarioLogado, setFuncionarioLogado] =
     useState<FuncionarioLogado | null>(null);
 
-  const [selecionadas, setSelecionadas] = useState<number[]>([]);
-  const [exportando, setExportando] = useState(false);
-  const [saindo, setSaindo] = useState(false);
-
+  /**
+   * Mensagem de sucesso recebida pela query string.
+   * Exemplo:
+   * /?sucesso=maquina-criada
+   */
   const sucesso = searchParams.get("sucesso");
 
+  /**
+   * Estados dos filtros aplicados na listagem.
+   * O backend recebe esses filtros via query string.
+   */
   const [numeroSerie, setNumeroSerie] = useState("");
   const [setoresSelecionados, setSetoresSelecionados] = useState<string[]>([]);
-  const [usuariosSelecionados, setUsuariosSelecionados] = useState<string[]>([]);
+  const [usuariosSelecionados, setUsuariosSelecionados] = useState<string[]>(
+    []
+  );
   const [tiposSelecionados, setTiposSelecionados] = useState<string[]>([]);
   const [modelosSelecionados, setModelosSelecionados] = useState<string[]>([]);
-  const [contratosSelecionados, setContratosSelecionados] = useState<string[]>([]);
+  const [contratosSelecionados, setContratosSelecionados] = useState<string[]>(
+    []
+  );
   const [origensSelecionadas, setOrigensSelecionadas] = useState<string[]>([]);
 
+  /**
+   * Opções disponíveis para cada filtro.
+   * Essas listas são carregadas das APIs auxiliares.
+   */
   const [setores, setSetores] = useState<ItemFiltro[]>([]);
   const [usuarios, setUsuarios] = useState<ItemFiltro[]>([]);
   const [tiposEquipamento, setTiposEquipamento] = useState<ItemFiltro[]>([]);
@@ -66,6 +129,19 @@ function HomeContent() {
   const [contratos, setContratos] = useState<ItemFiltro[]>([]);
   const [origens, setOrigens] = useState<ItemFiltro[]>([]);
 
+  /**
+   * Carrega as opções de filtros auxiliares.
+   *
+   * Exemplo:
+   * - setores
+   * - usuários
+   * - tipos de equipamento
+   * - modelos
+   * - contratos
+   * - origens
+   *
+   * Essas listas alimentam os MultiSelectFilter da UI.
+   */
   async function carregarFiltros() {
     try {
       const [
@@ -108,6 +184,11 @@ function HomeContent() {
       setOrigens(Array.isArray(origensData) ? origensData : []);
     } catch (error) {
       console.error("Erro ao carregar filtros:", error);
+
+      /**
+       * Em caso de falha, limpamos os filtros auxiliares para evitar
+       * comportamento inconsistente na tela.
+       */
       setSetores([]);
       setUsuarios([]);
       setTiposEquipamento([]);
@@ -117,6 +198,91 @@ function HomeContent() {
     }
   }
 
+  /**
+   * Busca o funcionário logado via /api/me.
+   *
+   * A resposta é usada para:
+   * - descobrir perfil do usuário
+   * - liberar ações exclusivas para master
+   */
+  async function carregarFuncionarioLogado() {
+    try {
+      const response = await fetch("/api/me");
+
+      if (!response.ok) {
+        setFuncionarioLogado(null);
+        return;
+      }
+
+      const data = await response.json();
+      setFuncionarioLogado(data.usuario ?? data.funcionario ?? null);
+    } catch (error) {
+      console.error("Erro ao carregar funcionário logado:", error);
+      setFuncionarioLogado(null);
+    }
+  }
+
+  /**
+   * Monta e executa a busca principal da listagem de máquinas.
+   *
+   * Regras:
+   * - usa os filtros atuais da tela
+   * - pagina os resultados
+   * - atualiza total, página e total de páginas
+   */
+  async function carregarMaquinas(pageToLoad = page) {
+    setLoading(true);
+
+    try {
+      const params = new URLSearchParams();
+
+      if (numeroSerie.trim()) {
+        params.set("numero_serie", numeroSerie.trim());
+      }
+
+      setoresSelecionados.forEach((item) => params.append("setor", item));
+      usuariosSelecionados.forEach((item) => params.append("usuario", item));
+      tiposSelecionados.forEach((item) =>
+        params.append("tipo_equipamento", item)
+      );
+      modelosSelecionados.forEach((item) => params.append("modelo", item));
+      contratosSelecionados.forEach((item) => params.append("contrato", item));
+      origensSelecionadas.forEach((item) => params.append("origem", item));
+
+      params.set("page", String(pageToLoad));
+      params.set("limit", String(limit));
+
+      const url = `/api/maquinas-detalhadas?${params.toString()}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      const maquinasCarregadas = Array.isArray(data.dados) ? data.dados : [];
+
+      setMaquinas(maquinasCarregadas);
+      setTotal(data.total ?? 0);
+      setTotalPages(data.totalPages ?? 0);
+      setPage(data.page ?? 1);
+    } catch (error) {
+      console.error("Erro ao carregar máquinas:", error);
+
+      /**
+       * Em caso de erro, a tabela é esvaziada para não manter dados antigos
+       * que podem sugerir que a consulta ainda está válida.
+       */
+      setMaquinas([]);
+      setTotal(0);
+      setTotalPages(0);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /**
+   * Exclusão em lote das máquinas selecionadas.
+   *
+   * Regra de segurança:
+   * o usuário precisa digitar DELETAR para confirmar.
+   */
   async function handleExcluirSelecionadas() {
     if (selecionadas.length === 0) {
       alert("Selecione pelo menos uma máquina para excluir.");
@@ -166,74 +332,22 @@ function HomeContent() {
     }
   }
 
-  async function carregarFuncionarioLogado() {
-    try {
-      const response = await fetch("/api/me");
-
-      if (!response.ok) {
-        setFuncionarioLogado(null);
-        return;
-      }
-
-      const data = await response.json();
-      setFuncionarioLogado(data.usuario ?? data.funcionario ?? null);
-    } catch (error) {
-      console.error("Erro ao carregar funcionário logado:", error);
-      setFuncionarioLogado(null);
-    }
-  }
-
-  async function carregarMaquinas(pageToLoad = page) {
-    setLoading(true);
-
-    try {
-      const params = new URLSearchParams();
-
-      if (numeroSerie.trim()) {
-        params.set("numero_serie", numeroSerie.trim());
-      }
-
-      setoresSelecionados.forEach((item) => params.append("setor", item));
-      usuariosSelecionados.forEach((item) => params.append("usuario", item));
-      tiposSelecionados.forEach((item) => params.append("tipo_equipamento", item));
-      modelosSelecionados.forEach((item) => params.append("modelo", item));
-      contratosSelecionados.forEach((item) => params.append("contrato", item));
-      origensSelecionadas.forEach((item) => params.append("origem", item));
-
-      params.set("page", String(pageToLoad));
-      params.set("limit", String(limit));
-
-      const url = `/api/maquinas-detalhadas?${params.toString()}`;
-
-      const response = await fetch(url);
-      const data = await response.json();
-
-      const maquinasCarregadas = Array.isArray(data.dados) ? data.dados : [];
-
-      setMaquinas(maquinasCarregadas);
-      setTotal(data.total ?? 0);
-      setTotalPages(data.totalPages ?? 0);
-      setPage(data.page ?? 1);
-    } catch (error) {
-      console.error("Erro ao carregar máquinas:", error);
-      setMaquinas([]);
-      setTotal(0);
-      setTotalPages(0);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    carregarFiltros();
-    carregarMaquinas(1);
-    carregarFuncionarioLogado();
-  }, []);
-
+  /**
+   * Aplica os filtros atuais na listagem.
+   * Sempre reinicia da primeira página.
+   */
   function handleFiltrar() {
     carregarMaquinas(1);
   }
 
+  /**
+   * Limpa todos os filtros e recarrega a listagem base.
+   *
+   * Observação:
+   * Aqui foi mantida a lógica original do arquivo, usando fetch direto
+   * ao invés de reutilizar carregarMaquinas.
+   * Isso preserva o comportamento original sem alterar a lógica existente.
+   */
   function handleLimpar() {
     setNumeroSerie("");
     setSetoresSelecionados([]);
@@ -248,6 +362,7 @@ function HomeContent() {
       .then((res) => res.json())
       .then((data) => {
         const maquinasCarregadas = Array.isArray(data.dados) ? data.dados : [];
+
         setMaquinas(maquinasCarregadas);
         setTotal(data.total ?? 0);
         setTotalPages(data.totalPages ?? 0);
@@ -264,24 +379,36 @@ function HomeContent() {
       });
   }
 
+  /**
+   * Navegação para página anterior.
+   */
   function handlePaginaAnterior() {
     if (page > 1) {
       carregarMaquinas(page - 1);
     }
   }
 
+  /**
+   * Navegação para próxima página.
+   */
   function handleProximaPagina() {
     if (page < totalPages) {
       carregarMaquinas(page + 1);
     }
   }
 
+  /**
+   * Marca ou desmarca uma máquina individualmente.
+   */
   function toggleSelecionada(id: number) {
     setSelecionadas((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
   }
 
+  /**
+   * Seleciona todas as máquinas visíveis na página atual.
+   */
   function selecionarTodasVisiveis() {
     setSelecionadas((prev) => {
       const novas = maquinas
@@ -292,21 +419,36 @@ function HomeContent() {
     });
   }
 
+  /**
+   * Remove da seleção apenas as máquinas visíveis na página atual.
+   */
   function limparSelecaoVisivel() {
     setSelecionadas((prev) =>
       prev.filter((id) => !maquinas.some((maquina) => maquina.id === id))
     );
   }
 
+  /**
+   * Limpa toda a seleção, independentemente da página.
+   */
   function limparTodasSelecionadas() {
     setSelecionadas([]);
   }
 
+  /**
+   * Informa se todos os itens atualmente visíveis estão selecionados.
+   * Usado pelo checkbox principal da tabela.
+   */
   function paginaAtualEstaTodaSelecionada() {
     if (maquinas.length === 0) return false;
     return maquinas.every((maquina) => selecionadas.includes(maquina.id));
   }
 
+  /**
+   * Alterna seleção da página atual:
+   * - se todos estão marcados -> limpa seleção da página
+   * - se nem todos estão marcados -> seleciona todos da página
+   */
   function togglePaginaAtual() {
     if (paginaAtualEstaTodaSelecionada()) {
       limparSelecaoVisivel();
@@ -315,6 +457,14 @@ function HomeContent() {
     }
   }
 
+  /**
+   * Exporta apenas as máquinas selecionadas para Excel.
+   *
+   * A API recebe:
+   * - filtros atuais
+   * - ids selecionados
+   * - flag exportarTudoFiltrado = false
+   */
   async function handleExportarSelecionadas() {
     if (selecionadas.length === 0) {
       alert("Selecione pelo menos uma máquina para exportar.");
@@ -347,6 +497,9 @@ function HomeContent() {
         throw new Error(data?.erro || "Erro ao exportar Excel.");
       }
 
+      /**
+       * Fluxo de download do arquivo retornado pela API.
+       */
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -365,6 +518,9 @@ function HomeContent() {
     }
   }
 
+  /**
+   * Exporta todo o resultado filtrado, não apenas a seleção manual.
+   */
   async function handleExportarTudoFiltrado() {
     setExportando(true);
 
@@ -391,6 +547,9 @@ function HomeContent() {
         throw new Error(data?.erro || "Erro ao exportar Excel.");
       }
 
+      /**
+       * Fluxo de download do arquivo retornado pela API.
+       */
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -409,6 +568,9 @@ function HomeContent() {
     }
   }
 
+  /**
+   * Encerra a sessão atual e redireciona o usuário para login.
+   */
   async function handleSair() {
     try {
       setSaindo(true);
@@ -431,6 +593,26 @@ function HomeContent() {
     }
   }
 
+  /**
+   * Carregamento inicial da tela.
+   *
+   * Executado apenas uma vez na montagem do componente:
+   * - filtros auxiliares
+   * - listagem principal
+   * - dados do usuário logado
+   */
+  useEffect(() => {
+    carregarFiltros();
+    carregarMaquinas(1);
+    carregarFuncionarioLogado();
+  }, []);
+
+  /**
+   * Componente local de paginação.
+   *
+   * Foi mantido dentro da página porque depende diretamente dos estados
+   * locais de paginação e não parece ser reutilizado em outras telas.
+   */
   const Paginacao = () => (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="text-sm text-gray-500">
@@ -461,6 +643,7 @@ function HomeContent() {
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
+        {/* Cabeçalho principal da tela */}
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
@@ -468,10 +651,12 @@ function HomeContent() {
                 Controle de Máquinas
               </h1>
               <p className="mt-1 text-sm text-slate-500">
-                Gestão de inventário, filtros, importação e exportação de relatórios.
+                Gestão de inventário, filtros, importação e exportação de
+                relatórios.
               </p>
             </div>
 
+            {/* Ações rápidas e navegação para outros módulos */}
             <div className="flex flex-wrap gap-2">
               <Link
                 href="/nova-maquina"
@@ -508,11 +693,11 @@ function HomeContent() {
               )}
 
               <Link
-  href="/usuarios"
-  className="inline-flex items-center rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700"
->
-  Usuários
-</Link>
+                href="/usuarios"
+                className="inline-flex items-center rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700"
+              >
+                Usuários
+              </Link>
 
               <button
                 onClick={handleSair}
@@ -525,6 +710,7 @@ function HomeContent() {
           </div>
         </section>
 
+        {/* Alertas de sucesso vindos por query string */}
         {sucesso === "maquina-criada" && (
           <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-green-700 shadow-sm">
             Máquina cadastrada com sucesso.
@@ -543,6 +729,7 @@ function HomeContent() {
           </div>
         )}
 
+        {/* Bloco de filtros da listagem */}
         <section className="rounded-3xl bg-white p-5 shadow-lg ring-1 ring-slate-200">
           <div className="mb-5">
             <h2 className="text-lg font-semibold text-slate-900">Filtros</h2>
@@ -552,6 +739,7 @@ function HomeContent() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {/* Filtro de texto simples */}
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Número de Série
@@ -565,6 +753,7 @@ function HomeContent() {
               />
             </div>
 
+            {/* Filtros de múltipla seleção */}
             <MultiSelectFilter
               label="Setores"
               options={setores}
@@ -613,6 +802,7 @@ function HomeContent() {
               placeholder="Buscar origem..."
             />
 
+            {/* Botões de ação dos filtros */}
             <div className="flex items-end gap-2">
               <button
                 onClick={handleFiltrar}
@@ -631,6 +821,7 @@ function HomeContent() {
           </div>
         </section>
 
+        {/* Bloco de resumo da seleção atual */}
         <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -644,6 +835,7 @@ function HomeContent() {
               </p>
             </div>
 
+            {/* Ações em massa */}
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={limparTodasSelecionadas}
@@ -658,7 +850,9 @@ function HomeContent() {
                 disabled={excluindoSelecionadas || selecionadas.length === 0}
                 className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {excluindoSelecionadas ? "Excluindo..." : "Excluir selecionadas"}
+                {excluindoSelecionadas
+                  ? "Excluindo..."
+                  : "Excluir selecionadas"}
               </button>
 
               <button
@@ -680,6 +874,7 @@ function HomeContent() {
           </div>
         </section>
 
+        {/* Tabela principal da listagem */}
         <section className="space-y-4">
           <Paginacao />
 
@@ -696,7 +891,9 @@ function HomeContent() {
                       />
                     </th>
                     <th className="p-4 text-sm font-semibold">ID</th>
-                    <th className="p-4 text-sm font-semibold">Número de Série</th>
+                    <th className="p-4 text-sm font-semibold">
+                      Número de Série
+                    </th>
                     <th className="p-4 text-sm font-semibold">Setor</th>
                     <th className="p-4 text-sm font-semibold">Usuário</th>
                     <th className="p-4 text-sm font-semibold">Tipo</th>
@@ -722,7 +919,9 @@ function HomeContent() {
                         />
                       </td>
 
-                      <td className="p-4 text-sm text-slate-700">{maquina.id}</td>
+                      <td className="p-4 text-sm text-slate-700">
+                        {maquina.id}
+                      </td>
 
                       <td className="p-4 text-sm font-semibold text-slate-900">
                         {maquina.numero_serie}
@@ -774,7 +973,8 @@ function HomeContent() {
                           Nenhum registro encontrado.
                         </div>
                         <div className="mt-1 text-sm text-slate-500">
-                          Ajuste os filtros ou limpe a busca para tentar novamente.
+                          Ajuste os filtros ou limpe a busca para tentar
+                          novamente.
                         </div>
                       </td>
                     </tr>
@@ -791,6 +991,12 @@ function HomeContent() {
   );
 }
 
+/**
+ * Wrapper com Suspense.
+ *
+ * Como esta página usa useSearchParams(), o Suspense evita warnings
+ * e permite um fallback simples durante a hidratação inicial.
+ */
 export default function Home() {
   return (
     <Suspense

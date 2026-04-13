@@ -31,8 +31,10 @@ function formatarTextoAuditoria(valor: string) {
     importacao_criacao: "Importação - criação",
     importacao_atualizacao: "Importação - atualização",
     redefinicao_senha: "Redefinição de senha",
+    inativacao: "Inativação",
     maquina: "Máquina",
     funcionario: "Funcionário",
+    usuario: "Usuário",
   };
 
   if (mapa[valor]) return mapa[valor];
@@ -95,10 +97,7 @@ function renderizarAlteracoes(antes: string | null, depois: string | null) {
   }
 
   const chaves = Array.from(
-    new Set([
-      ...Object.keys(objAntes ?? {}),
-      ...Object.keys(objDepois ?? {}),
-    ])
+    new Set([...Object.keys(objAntes ?? {}), ...Object.keys(objDepois ?? {})])
   );
 
   const diferencas = chaves.filter((chave) => {
@@ -139,8 +138,14 @@ export default function AuditoriaPage() {
   const [entidade, setEntidade] = useState("");
   const [acao, setAcao] = useState("");
   const [registro, setRegistro] = useState("");
+  const [busca, setBusca] = useState("");
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
+
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   async function carregarFiltros() {
     try {
@@ -166,7 +171,7 @@ export default function AuditoriaPage() {
     }
   }
 
-  async function carregarAuditoria() {
+  async function carregarAuditoria(pageToLoad = page, limitToLoad = limit) {
     setLoading(true);
 
     try {
@@ -176,8 +181,12 @@ export default function AuditoriaPage() {
       if (entidade.trim()) params.set("entidade", entidade.trim());
       if (acao.trim()) params.set("acao", acao.trim());
       if (registro.trim()) params.set("registro", registro.trim());
+      if (busca.trim()) params.set("busca", busca.trim());
       if (dataInicio) params.set("dataInicio", dataInicio);
       if (dataFim) params.set("dataFim", dataFim);
+
+      params.set("page", String(pageToLoad));
+      params.set("limit", String(limitToLoad));
 
       const response = await fetch(`/api/auditoria?${params.toString()}`);
       const data = await response.json();
@@ -187,9 +196,15 @@ export default function AuditoriaPage() {
       }
 
       setLogs(Array.isArray(data?.logs) ? data.logs : []);
+      setTotal(Number(data?.total ?? 0));
+      setTotalPages(Number(data?.totalPages ?? 1));
+      setPage(Number(data?.page ?? pageToLoad));
+      setLimit(Number(data?.limit ?? limitToLoad));
     } catch (error) {
       console.error(error);
       setLogs([]);
+      setTotal(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -200,12 +215,15 @@ export default function AuditoriaPage() {
     setEntidade("");
     setAcao("");
     setRegistro("");
+    setBusca("");
     setDataInicio("");
     setDataFim("");
+    setPage(1);
+
     setLoading(true);
 
     try {
-      const response = await fetch("/api/auditoria");
+      const response = await fetch(`/api/auditoria?page=1&limit=${limit}`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -213,17 +231,38 @@ export default function AuditoriaPage() {
       }
 
       setLogs(Array.isArray(data?.logs) ? data.logs : []);
+      setTotal(Number(data?.total ?? 0));
+      setTotalPages(Number(data?.totalPages ?? 1));
+      setPage(Number(data?.page ?? 1));
     } catch (error) {
       console.error(error);
       setLogs([]);
+      setTotal(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
   }
 
+  function handleFiltrar() {
+    carregarAuditoria(1, limit);
+  }
+
+  function handlePaginaAnterior() {
+    if (page > 1) {
+      carregarAuditoria(page - 1, limit);
+    }
+  }
+
+  function handleProximaPagina() {
+    if (page < totalPages) {
+      carregarAuditoria(page + 1, limit);
+    }
+  }
+
   useEffect(() => {
     carregarFiltros();
-    carregarAuditoria();
+    carregarAuditoria(1, limit);
   }, []);
 
   return (
@@ -257,7 +296,7 @@ export default function AuditoriaPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Funcionário
@@ -314,14 +353,27 @@ export default function AuditoriaPage() {
 
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
-                Registro
+                ID do registro
               </label>
               <input
                 type="number"
                 value={registro}
                 onChange={(e) => setRegistro(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 p-2"
-                placeholder="ID do registro"
+                placeholder="Ex.: 1"
+              />
+            </div>
+
+            <div className="md:col-span-2 xl:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Busca geral
+              </label>
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 p-2"
+                placeholder="Nome do usuário, número de série, contrato, descrição..."
               />
             </div>
 
@@ -351,7 +403,7 @@ export default function AuditoriaPage() {
 
             <div className="flex items-end gap-2">
               <button
-                onClick={carregarAuditoria}
+                onClick={handleFiltrar}
                 className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
               >
                 Filtrar
@@ -362,6 +414,53 @@ export default function AuditoriaPage() {
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
               >
                 Limpar
+              </button>
+            </div>
+
+            <div className="flex items-end gap-2">
+              <label className="text-sm font-medium text-slate-700">
+                Por página
+              </label>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  const novoLimit = Number(e.target.value);
+                  setLimit(novoLimit);
+                  carregarAuditoria(1, novoLimit);
+                }}
+                className="rounded-xl border border-slate-300 p-2"
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-slate-600">
+              {loading
+                ? "Carregando registros..."
+                : `${total} registro(s) encontrado(s) • Página ${page} de ${totalPages}`}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handlePaginaAnterior}
+                disabled={page <= 1 || loading}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+              >
+                Anterior
+              </button>
+
+              <button
+                onClick={handleProximaPagina}
+                disabled={page >= totalPages || loading}
+                className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-900 disabled:opacity-50"
+              >
+                Próxima
               </button>
             </div>
           </div>
@@ -376,7 +475,7 @@ export default function AuditoriaPage() {
                   <th className="p-4 text-sm font-semibold">Funcionário</th>
                   <th className="p-4 text-sm font-semibold">Ação</th>
                   <th className="p-4 text-sm font-semibold">Entidade</th>
-                  <th className="p-4 text-sm font-semibold">Registro</th>
+                  <th className="p-4 text-sm font-semibold">ID</th>
                   <th className="p-4 text-sm font-semibold">Descrição</th>
                   <th className="p-4 text-sm font-semibold">Alterações</th>
                 </tr>
@@ -424,13 +523,44 @@ export default function AuditoriaPage() {
 
                 {loading && (
                   <tr>
-                    <td colSpan={7} className="p-10 text-center text-sm text-slate-500">
+                    <td
+                      colSpan={7}
+                      className="p-10 text-center text-sm text-slate-500"
+                    >
                       Carregando auditoria...
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-slate-600">
+              {loading
+                ? "Carregando registros..."
+                : `${total} registro(s) encontrado(s) • Página ${page} de ${totalPages}`}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handlePaginaAnterior}
+                disabled={page <= 1 || loading}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+              >
+                Anterior
+              </button>
+
+              <button
+                onClick={handleProximaPagina}
+                disabled={page >= totalPages || loading}
+                className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-900 disabled:opacity-50"
+              >
+                Próxima
+              </button>
+            </div>
           </div>
         </section>
       </div>

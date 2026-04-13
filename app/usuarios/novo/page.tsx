@@ -4,16 +4,38 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
+/**
+ * Página de criação de novo usuário.
+ *
+ * Responsabilidades:
+ * - controlar o formulário de cadastro
+ * - validar o campo obrigatório "nome"
+ * - enviar os dados para a API
+ * - redirecionar para a listagem após sucesso
+ */
 export default function NovoUsuarioPage() {
   const router = useRouter();
 
+  /**
+   * Estados do formulário.
+   */
   const [nome, setNome] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginMaquina, setLoginMaquina] = useState("");
 
+  /**
+   * Estados de controle da tela.
+   */
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
+  /**
+   * Envia o cadastro do novo usuário.
+   *
+   * Regras:
+   * - nome é obrigatório
+   * - campos opcionais vazios viram null
+   */
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErro("");
@@ -57,6 +79,7 @@ export default function NovoUsuarioPage() {
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">
       <div className="mx-auto max-w-3xl space-y-6">
+        {/* Cabeçalho da tela */}
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
@@ -79,6 +102,7 @@ export default function NovoUsuarioPage() {
           </div>
         </section>
 
+        {/* Formulário de criação */}
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <form onSubmit={handleSubmit} className="space-y-5">
             {erro && (

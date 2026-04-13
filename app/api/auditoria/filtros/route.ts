@@ -2,10 +2,25 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigeMaster } from "@/lib/auth";
 
+/**
+ * GET /api/auditoria/filtros
+ *
+ * Responsabilidades:
+ * - exigir acesso master
+ * - buscar valores distintos para popular os filtros da tela de auditoria
+ *
+ * Retorna:
+ * - funcionarios
+ * - acoes
+ * - entidades
+ */
 export async function GET() {
   try {
     await exigeMaster();
 
+    /**
+     * Busca em paralelo os valores únicos usados nos selects da UI.
+     */
     const [funcionariosRaw, acoesRaw, entidadesRaw] = await Promise.all([
       prisma.auditoriaLog.findMany({
         where: {
@@ -43,6 +58,9 @@ export async function GET() {
       }),
     ]);
 
+    /**
+     * Limpa possíveis valores nulos e normaliza a resposta.
+     */
     const funcionarios = funcionariosRaw
       .map((item) => item.funcionarioNome)
       .filter((value): value is string => Boolean(value));

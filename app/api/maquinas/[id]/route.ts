@@ -9,6 +9,9 @@ type Params = {
   }>;
 };
 
+/**
+ * Tipo esperado no body de atualização de máquina.
+ */
 type AtualizarMaquinaBody = {
   numero_serie: string;
   setor_id: number;
@@ -23,6 +26,9 @@ type AtualizarMaquinaBody = {
   numero_termo_responsabilidade?: string | null;
 };
 
+/**
+ * Snapshot enxuto da máquina para auditoria.
+ */
 function snapshotMaquina(maquina: {
   id: number;
   numero_serie: string;
@@ -53,6 +59,9 @@ function snapshotMaquina(maquina: {
   };
 }
 
+/**
+ * Extrai apenas os dados necessários do autor da ação para auditoria.
+ */
 function autorAuditoria(logado: {
   id: number;
   nome: string;
@@ -66,6 +75,15 @@ function autorAuditoria(logado: {
   };
 }
 
+/**
+ * GET /api/maquinas/[id]
+ *
+ * Busca uma máquina específica pelo ID.
+ *
+ * Observação:
+ * esta rota, do jeito atual, não exige login.
+ * Se essa informação for sensível, vale proteger depois.
+ */
 export async function GET(_: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
@@ -92,6 +110,15 @@ export async function GET(_: NextRequest, { params }: Params) {
   }
 }
 
+/**
+ * DELETE /api/maquinas/[id]
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar existência da máquina
+ * - excluir
+ * - registrar auditoria
+ */
 export async function DELETE(_: NextRequest, { params }: Params) {
   try {
     const logado = await exigeLogin();
@@ -139,6 +166,16 @@ export async function DELETE(_: NextRequest, { params }: Params) {
   }
 }
 
+/**
+ * PUT /api/maquinas/[id]
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar campos obrigatórios
+ * - impedir duplicidade de número de série
+ * - atualizar máquina
+ * - registrar auditoria
+ */
 export async function PUT(request: NextRequest, { params }: Params) {
   try {
     const logado = await exigeLogin();
@@ -173,6 +210,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
       );
     }
 
+    /**
+     * Impede duplicar número de série em outra máquina.
+     */
     const duplicada = await prisma.maquinas.findFirst({
       where: {
         numero_serie: numeroSerie,

@@ -3,6 +3,21 @@ import { prisma } from "@/lib/prisma";
 import { exigeLogin } from "@/lib/auth";
 import { criarLogAuditoria } from "@/lib/auditoria";
 
+/**
+ * GET /api/usuarios/[id]
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar ID
+ * - buscar usuário
+ * - buscar máquinas vinculadas ao usuário
+ * - montar resposta detalhada com nomes amigáveis
+ *
+ * Observação:
+ * esta rota retorna os dados do usuário e também um resumo
+ * das máquinas vinculadas já traduzidas com nomes de setor,
+ * modelo, contrato, origem e tipo.
+ */
 export async function GET(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -42,6 +57,9 @@ export async function GET(
       },
     });
 
+    /**
+     * Carrega catálogos auxiliares para traduzir IDs em nomes.
+     */
     const [setores, modelos, contratos, origens, tipos] = await Promise.all([
       prisma.setores.findMany(),
       prisma.modelos.findMany(),
@@ -56,6 +74,10 @@ export async function GET(
     const origensMap = new Map(origens.map((item) => [item.id, item.nome]));
     const tiposMap = new Map(tipos.map((item) => [item.id, item.nome]));
 
+    /**
+     * Converte as máquinas do formato bruto do banco
+     * para um formato amigável para a UI.
+     */
     const maquinasDetalhadas = maquinas.map((maquina) => ({
       id: maquina.id,
       numero_serie: maquina.numero_serie,
@@ -71,7 +93,8 @@ export async function GET(
       contrato:
         maquina.contrato_id != null
           ? contratosMap.get(maquina.contrato_id) ?? "-"
-          : "-",
+          : "-"
+          ,
       origem:
         maquina.origem_id != null
           ? origensMap.get(maquina.origem_id) ?? "-"
@@ -101,6 +124,16 @@ export async function GET(
   }
 }
 
+/**
+ * PUT /api/usuarios/[id]
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar ID
+ * - validar nome obrigatório
+ * - atualizar usuário
+ * - registrar auditoria comparando antes e depois
+ */
 export async function PUT(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -131,6 +164,9 @@ export async function PUT(
       );
     }
 
+    /**
+     * Busca estado anterior para auditoria.
+     */
     const antes = await prisma.usuarios.findUnique({
       where: {
         id: usuarioId,

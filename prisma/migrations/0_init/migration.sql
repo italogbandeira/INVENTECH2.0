@@ -1,4 +1,7 @@
--- CreateTable
+-- Migration inicial do banco de dados.
+-- Cria as tabelas principais do sistema de inventário.
+
+-- Tabela de staging/importação bruta de máquinas.
 CREATE TABLE `base_maquinas_import` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `numero_serie` VARCHAR(255) NULL,
@@ -18,7 +21,7 @@ CREATE TABLE `base_maquinas_import` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- CreateTable
+-- Catálogo de contratos.
 CREATE TABLE `contratos` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `nome` VARCHAR(150) NOT NULL,
@@ -27,7 +30,7 @@ CREATE TABLE `contratos` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- CreateTable
+-- Tabela principal de máquinas.
 CREATE TABLE `maquinas` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `numero_serie` VARCHAR(255) NOT NULL,
@@ -52,7 +55,7 @@ CREATE TABLE `maquinas` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- CreateTable
+-- Catálogo de modelos.
 CREATE TABLE `modelos` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `nome` VARCHAR(150) NOT NULL,
@@ -61,7 +64,7 @@ CREATE TABLE `modelos` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- CreateTable
+-- Catálogo de origens.
 CREATE TABLE `origens` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `nome` VARCHAR(100) NOT NULL,
@@ -70,7 +73,7 @@ CREATE TABLE `origens` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- CreateTable
+-- Catálogo de setores.
 CREATE TABLE `setores` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `nome` VARCHAR(100) NOT NULL,
@@ -79,7 +82,7 @@ CREATE TABLE `setores` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- CreateTable
+-- Catálogo de tipos de equipamento.
 CREATE TABLE `tipos_equipamento` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `nome` VARCHAR(100) NOT NULL,
@@ -88,7 +91,7 @@ CREATE TABLE `tipos_equipamento` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- CreateTable
+-- Tabela de usuários finais vinculados às máquinas.
 CREATE TABLE `usuarios` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `nome` VARCHAR(150) NOT NULL,

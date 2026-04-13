@@ -4,10 +4,22 @@ import { exigeMaster } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import FuncionariosClient from "./FuncionariosClient";
 
+/**
+ * Página server-side de funcionários.
+ *
+ * Responsabilidades:
+ * - garantir que apenas master acesse
+ * - carregar a lista inicial de funcionários no servidor
+ * - repassar os dados para o componente client
+ */
 export default async function FuncionariosPage() {
   try {
     await exigeMaster();
   } catch (error) {
+    /**
+     * Tratamento explícito dos erros semânticos
+     * vindos do helper de autenticação.
+     */
     if (error instanceof Error) {
       if (error.message === "NAO_AUTENTICADO") {
         redirect("/login");
@@ -21,6 +33,9 @@ export default async function FuncionariosPage() {
     redirect("/");
   }
 
+  /**
+   * Busca todos os funcionários ordenados alfabeticamente.
+   */
   const funcionarios = await prisma.funcionario.findMany({
     orderBy: { nome: "asc" },
   });

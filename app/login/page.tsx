@@ -3,13 +3,36 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+/**
+ * Página de login do sistema.
+ *
+ * Responsabilidades:
+ * - coletar e-mail e senha
+ * - chamar a rota de autenticação
+ * - redirecionar para a home em caso de sucesso
+ */
 export default function LoginPage() {
   const router = useRouter();
+
+  /**
+   * Estados do formulário.
+   */
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+
+  /**
+   * Estados de feedback.
+   */
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
 
+  /**
+   * Envia as credenciais para a API de login.
+   *
+   * Em caso de sucesso:
+   * - backend deve gravar o cookie da sessão
+   * - frontend navega para a página inicial
+   */
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErro("");

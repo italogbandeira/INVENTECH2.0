@@ -5,16 +5,29 @@ import { prisma } from "@/lib/prisma";
 import { exigeLogin } from "@/lib/auth";
 import { criarLogAuditoria } from "@/lib/auditoria";
 
+/**
+ * Parâmetros dinâmicos esperados pela rota.
+ */
 type ContextoParams = {
   params: Promise<{ id: string }>;
 };
 
+/**
+ * Tipos de documento aceitos pela API.
+ *
+ * A UI e a regra de negócio precisam permanecer alinhadas
+ * com esta lista.
+ */
 const TIPOS_VALIDOS = [
   "cessao_indeterminada",
   "devolucao_equipamento",
   "cessao_temporaria",
 ] as const;
 
+/**
+ * Traduz o tipo técnico do documento para um nome amigável
+ * usado na auditoria.
+ */
 function nomeTipoAmigavel(tipo: string) {
   const mapa: Record<string, string> = {
     cessao_indeterminada: "Termo de Cessão de Equip - Tempo Indeterminado",
@@ -25,6 +38,14 @@ function nomeTipoAmigavel(tipo: string) {
   return mapa[tipo] ?? tipo;
 }
 
+/**
+ * GET /api/usuarios/[id]/documentos
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar usuário
+ * - listar documentos do usuário
+ */
 export async function GET(_req: NextRequest, context: ContextoParams) {
   try {
     await exigeLogin();
@@ -69,6 +90,21 @@ export async function GET(_req: NextRequest, context: ContextoParams) {
   }
 }
 
+/**
+ * POST /api/usuarios/[id]/documentos
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar usuário
+ * - validar tipo e arquivo enviado
+ * - salvar arquivo em disco
+ * - criar registro do documento no banco
+ * - registrar auditoria
+ *
+ * Observação importante:
+ * hoje a rota cria um novo registro a cada upload.
+ * Ela ainda não faz substituição automática por tipo.
+ */
 export async function POST(req: NextRequest, context: ContextoParams) {
   try {
     const funcionario = await exigeLogin();
@@ -112,10 +148,18 @@ export async function POST(req: NextRequest, context: ContextoParams) {
       );
     }
 
+    /**
+     * Converte o arquivo recebido para Buffer
+     * para ser persistido no filesystem local.
+     */
     const bytes = await arquivo.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    /**
+     * Gera um nome de arquivo mais seguro e único.
+     */
     const nomeSeguro = `${Date.now()}-${arquivo.name.replace(/\s+/g, "-")}`;
+
     const pastaAbsoluta = path.join(
       process.cwd(),
       "public",
@@ -123,12 +167,16 @@ export async function POST(req: NextRequest, context: ContextoParams) {
       "usuarios",
       String(usuarioId)
     );
+
     const caminhoAbsoluto = path.join(pastaAbsoluta, nomeSeguro);
     const caminhoRelativo = `/uploads/usuarios/${usuarioId}/${nomeSeguro}`;
 
     await mkdir(pastaAbsoluta, { recursive: true });
     await writeFile(caminhoAbsoluto, buffer);
 
+    /**
+     * Persiste o registro do documento no banco.
+     */
     const documento = await prisma.usuarioDocumento.create({
       data: {
         usuarioId,

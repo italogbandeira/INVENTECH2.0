@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
+/**
+ * Estrutura básica do usuário usada no carregamento da edição.
+ */
 type Usuario = {
   id: number;
   nome: string;
@@ -15,18 +18,42 @@ type Props = {
   params: Promise<{ id: string }>;
 };
 
+/**
+ * Página de edição de usuário.
+ *
+ * Responsabilidades:
+ * - carregar o usuário atual pelo ID
+ * - preencher o formulário com os dados existentes
+ * - validar o campo obrigatório "nome"
+ * - enviar as alterações para a API
+ * - redirecionar de volta para a tela de detalhe
+ */
 export default function EditarUsuarioPage({ params }: Props) {
   const router = useRouter();
 
+  /**
+   * Guarda o ID numérico do usuário carregado.
+   * Útil para construir links de volta/cancelar.
+   */
   const [usuarioId, setUsuarioId] = useState<number | null>(null);
+
+  /**
+   * Estados do formulário.
+   */
   const [nome, setNome] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginMaquina, setLoginMaquina] = useState("");
 
+  /**
+   * Estados de controle da tela.
+   */
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
+  /**
+   * Carrega os dados do usuário ao abrir a página.
+   */
   useEffect(() => {
     async function carregarUsuario() {
       try {
@@ -64,6 +91,13 @@ export default function EditarUsuarioPage({ params }: Props) {
     carregarUsuario();
   }, [params]);
 
+  /**
+   * Envia as alterações do formulário para a API.
+   *
+   * Regras:
+   * - nome é obrigatório
+   * - login_email e login_maquina vazios viram null
+   */
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErro("");
@@ -109,6 +143,7 @@ export default function EditarUsuarioPage({ params }: Props) {
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">
       <div className="mx-auto max-w-3xl space-y-6">
+        {/* Cabeçalho da tela */}
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
@@ -133,6 +168,7 @@ export default function EditarUsuarioPage({ params }: Props) {
           </div>
         </section>
 
+        {/* Formulário */}
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           {loading ? (
             <div className="text-sm text-slate-500">Carregando usuário...</div>

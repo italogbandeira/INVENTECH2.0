@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { exigeLogin } from "@/lib/auth";
 import { criarLogAuditoria } from "@/lib/auditoria";
 
+/**
+ * Tipo com os mapas de tradução de IDs -> nomes.
+ *
+ * Usado para montar respostas amigáveis para a UI.
+ */
 type ContextoParams = {
   params: Promise<{ id: string }>;
 };
@@ -15,6 +20,10 @@ type Mapas = {
   origensMap: Map<number, string>;
 };
 
+/**
+ * Converte uma máquina do formato bruto do banco
+ * para um formato detalhado e amigável para a tela.
+ */
 function montarDetalheMaquina(
   maquina: {
     id: number;
@@ -54,6 +63,9 @@ function montarDetalheMaquina(
   };
 }
 
+/**
+ * Carrega os catálogos auxiliares e já devolve os mapas montados.
+ */
 async function carregarMapas() {
   const [setores, modelos, contratos, origens, tipos] = await Promise.all([
     prisma.setores.findMany(),
@@ -73,6 +85,21 @@ async function carregarMapas() {
   };
 }
 
+/**
+ * GET /api/usuarios/[id]/maquinas
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar usuário
+ * - devolver:
+ *   - máquinas vinculadas ao usuário
+ *   - máquinas disponíveis para vínculo
+ *
+ * Regra especial:
+ * máquinas disponíveis são consideradas:
+ * - sem usuário vinculado
+ * - ou pertencentes ao setor "máquinas livres"
+ */
 export async function GET(_req: NextRequest, context: ContextoParams) {
   try {
     await exigeLogin();
@@ -120,6 +147,9 @@ export async function GET(_req: NextRequest, context: ContextoParams) {
       }),
     ]);
 
+    /**
+     * Evita que uma máquina já vinculada apareça também como disponível.
+     */
     const idsVinculadas = new Set(maquinasVinculadas.map((maquina) => maquina.id));
 
     const maquinasDisponiveis = maquinasDisponiveisBrutas.filter(
@@ -147,6 +177,15 @@ export async function GET(_req: NextRequest, context: ContextoParams) {
   }
 }
 
+/**
+ * PUT /api/usuarios/[id]/maquinas
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar usuário e máquina
+ * - vincular a máquina ao usuário
+ * - registrar auditoria do vínculo
+ */
 export async function PUT(req: NextRequest, context: ContextoParams) {
   try {
     const funcionario = await exigeLogin();
@@ -233,6 +272,15 @@ export async function PUT(req: NextRequest, context: ContextoParams) {
   }
 }
 
+/**
+ * DELETE /api/usuarios/[id]/maquinas
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar usuário e máquina
+ * - remover o vínculo da máquina com o usuário
+ * - registrar auditoria da remoção
+ */
 export async function DELETE(req: NextRequest, context: ContextoParams) {
   try {
     const funcionario = await exigeLogin();

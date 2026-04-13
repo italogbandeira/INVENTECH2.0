@@ -3,11 +3,17 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+/**
+ * Estrutura dos itens auxiliares usados nos selects.
+ */
 type ItemFiltro = {
   id: number;
   nome: string;
 };
 
+/**
+ * Estrutura da máquina carregada para edição.
+ */
 type Maquina = {
   id: number;
   numero_serie: string;
@@ -23,16 +29,31 @@ type Maquina = {
   numero_termo_responsabilidade: string | null;
 };
 
+/**
+ * Página de edição de máquina.
+ *
+ * Responsabilidades:
+ * - carregar os dados da máquina
+ * - carregar catálogos auxiliares
+ * - editar os campos
+ * - excluir a máquina com confirmação forte
+ */
 export default function EditarMaquinaPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
 
+  /**
+   * Estados do modal de exclusão.
+   */
   const [mostrarConfirmacaoExcluir, setMostrarConfirmacaoExcluir] =
     useState(false);
   const [textoConfirmacaoExcluir, setTextoConfirmacaoExcluir] = useState("");
   const [excluindo, setExcluindo] = useState(false);
 
+  /**
+   * Campos do formulário.
+   */
   const [numeroSerie, setNumeroSerie] = useState("");
   const [setorId, setSetorId] = useState("");
   const [usuarioId, setUsuarioId] = useState("");
@@ -46,6 +67,9 @@ export default function EditarMaquinaPage() {
   const [numeroTermoResponsabilidade, setNumeroTermoResponsabilidade] =
     useState("");
 
+  /**
+   * Catálogos auxiliares.
+   */
   const [setores, setSetores] = useState<ItemFiltro[]>([]);
   const [usuarios, setUsuarios] = useState<ItemFiltro[]>([]);
   const [tiposEquipamento, setTiposEquipamento] = useState<ItemFiltro[]>([]);
@@ -53,10 +77,20 @@ export default function EditarMaquinaPage() {
   const [contratos, setContratos] = useState<ItemFiltro[]>([]);
   const [origens, setOrigens] = useState<ItemFiltro[]>([]);
 
+  /**
+   * Estados de controle.
+   */
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
 
+  /**
+   * Carrega todos os dados necessários para a edição.
+   *
+   * Isso inclui:
+   * - a máquina atual
+   * - catálogos de apoio para os selects
+   */
   useEffect(() => {
     async function carregarTudo() {
       try {
@@ -141,6 +175,12 @@ export default function EditarMaquinaPage() {
     }
   }, [id]);
 
+  /**
+   * Executa exclusão da máquina.
+   *
+   * Regra de segurança:
+   * exige que o usuário digite DELETAR em maiúsculo.
+   */
   async function handleExcluir() {
     if (textoConfirmacaoExcluir !== "DELETAR") {
       setErro("Digite DELETAR em maiúsculo para confirmar a exclusão.");
@@ -172,6 +212,9 @@ export default function EditarMaquinaPage() {
     }
   }
 
+  /**
+   * Envia as alterações da máquina para a API.
+   */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
@@ -228,6 +271,9 @@ export default function EditarMaquinaPage() {
     }
   }
 
+  /**
+   * Estado de carregamento inicial.
+   */
   if (carregando) {
     return (
       <main className="min-h-screen bg-gray-100 p-8 text-gray-900">
@@ -429,19 +475,20 @@ export default function EditarMaquinaPage() {
             </button>
 
             <button
-  type="button"
-  onClick={() => {
-    setErro("");
-    setTextoConfirmacaoExcluir("");
-    setMostrarConfirmacaoExcluir(true);
-  }}
-  className="rounded-lg bg-red-700 px-4 py-2 text-black shadow-sm hover:bg-red-800"
->
-  Excluir
-</button>
+              type="button"
+              onClick={() => {
+                setErro("");
+                setTextoConfirmacaoExcluir("");
+                setMostrarConfirmacaoExcluir(true);
+              }}
+              className="rounded-lg bg-red-700 px-4 py-2 text-black shadow-sm hover:bg-red-800"
+            >
+              Excluir
+            </button>
           </div>
         </form>
 
+        {/* Modal simples de confirmação de exclusão */}
         {mostrarConfirmacaoExcluir && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">

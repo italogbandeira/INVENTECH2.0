@@ -3,16 +3,42 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+/**
+ * Página de primeiro acesso do sistema.
+ *
+ * Objetivo:
+ * permitir a criação inicial da conta master.
+ *
+ * Fluxo:
+ * - usuário informa nome, e-mail e senha
+ * - frontend envia para /api/primeiro-acesso
+ * - em caso de sucesso, redireciona para login
+ */
 export default function PrimeiroAcessoPage() {
   const router = useRouter();
 
+  /**
+   * Estados do formulário.
+   */
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+
+  /**
+   * Estados de feedback da tela.
+   */
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState("");
   const [carregando, setCarregando] = useState(false);
 
+  /**
+   * Envia os dados para criação da conta master inicial.
+   *
+   * Regras:
+   * - limpa mensagens anteriores
+   * - mostra feedback visual de carregamento
+   * - em sucesso, redireciona para login após pequeno intervalo
+   */
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErro("");
@@ -37,6 +63,10 @@ export default function PrimeiroAcessoPage() {
 
       setSucesso("Conta master criada com sucesso.");
 
+      /**
+       * Pequeno atraso para o usuário conseguir ler a mensagem
+       * antes do redirecionamento.
+       */
       setTimeout(() => {
         router.push("/login");
       }, 1500);
@@ -72,7 +102,9 @@ export default function PrimeiroAcessoPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-black">Nome</label>
+            <label className="mb-1 block text-sm font-medium text-black">
+              Nome
+            </label>
             <input
               type="text"
               className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
@@ -83,7 +115,9 @@ export default function PrimeiroAcessoPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-black">Email</label>
+            <label className="mb-1 block text-sm font-medium text-black">
+              Email
+            </label>
             <input
               type="email"
               className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
@@ -94,7 +128,9 @@ export default function PrimeiroAcessoPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-black">Senha</label>
+            <label className="mb-1 block text-sm font-medium text-black">
+              Senha
+            </label>
             <input
               type="password"
               className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"

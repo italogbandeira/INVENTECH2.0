@@ -1,6 +1,12 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 
+/**
+ * Script para criar um usuário master específico.
+ *
+ * Este arquivo tem mais logs no console para facilitar
+ * depuração durante configuração inicial.
+ */
 async function main() {
   const email = "italogabrie33@gmail.com";
   const senha = "Rogusbr123";

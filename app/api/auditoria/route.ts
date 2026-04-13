@@ -12,8 +12,13 @@ export async function GET(req: NextRequest) {
     const entidade = searchParams.get("entidade")?.trim();
     const acao = searchParams.get("acao")?.trim();
     const registro = searchParams.get("registro")?.trim();
+    const busca = searchParams.get("busca")?.trim();
     const dataInicio = searchParams.get("dataInicio")?.trim();
     const dataFim = searchParams.get("dataFim")?.trim();
+
+    const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
+    const limit = Math.max(1, Math.min(100, Number(searchParams.get("limit") ?? "20")));
+    const skip = (page - 1) * limit;
 
     const where = {
       ...(funcionario
@@ -40,17 +45,55 @@ export async function GET(req: NextRequest) {
             },
           }
         : {}),
+      ...(busca
+        ? {
+            OR: [
+              {
+                descricao: {
+                  contains: busca,
+                },
+              },
+              {
+                antes: {
+                  contains: busca,
+                },
+              },
+              {
+                depois: {
+                  contains: busca,
+                },
+              },
+              {
+                funcionarioNome: {
+                  contains: busca,
+                },
+              },
+            ],
+          }
+        : {}),
     };
 
-    const logs = await prisma.auditoriaLog.findMany({
-      where,
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 300,
-    });
+    const [total, logs] = await Promise.all([
+      prisma.auditoriaLog.count({ where }),
+      prisma.auditoriaLog.findMany({
+        where,
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip,
+        take: limit,
+      }),
+    ]);
 
-    return NextResponse.json({ logs });
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    return NextResponse.json({
+      logs,
+      total,
+      totalPages,
+      page,
+      limit,
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "SEM_PERMISSAO") {
       return NextResponse.json({ erro: "Sem permissão." }, { status: 403 });

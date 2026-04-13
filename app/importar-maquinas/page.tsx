@@ -3,6 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 
+/**
+ * Estrutura do resultado retornado pela importação.
+ *
+ * total: linhas processadas
+ * criadas: novas máquinas inseridas
+ * atualizadas: máquinas existentes alteradas
+ * ignoradas: linhas descartadas pelo processo
+ * erros: problemas encontrados por linha
+ */
 type ResultadoImportacao = {
   total: number;
   criadas: number;
@@ -14,12 +23,31 @@ type ResultadoImportacao = {
   }>;
 };
 
+/**
+ * Página de importação de máquinas por CSV.
+ *
+ * Responsabilidades:
+ * - receber arquivo CSV
+ * - enviar para a API
+ * - exibir resultado da importação
+ * - mostrar eventuais erros por linha
+ */
 export default function ImportarMaquinasPage() {
+  /**
+   * Arquivo selecionado no input.
+   */
   const [arquivo, setArquivo] = useState<File | null>(null);
+
+  /**
+   * Estados de controle e feedback.
+   */
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
   const [resultado, setResultado] = useState<ResultadoImportacao | null>(null);
 
+  /**
+   * Envia o CSV para a API de importação.
+   */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
@@ -60,6 +88,7 @@ export default function ImportarMaquinasPage() {
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">
       <div className="mx-auto max-w-4xl space-y-6">
+        {/* Cabeçalho da tela */}
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
@@ -80,6 +109,7 @@ export default function ImportarMaquinasPage() {
           </div>
         </section>
 
+        {/* Formulário de importação */}
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-slate-900">
@@ -122,6 +152,7 @@ numero_serie,setor,usuario,tipo_equipamento,modelo,contrato,origem,observacoes,e
           </form>
         </section>
 
+        {/* Resultado da importação */}
         {resultado && (
           <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 className="mb-4 text-lg font-semibold text-slate-900">

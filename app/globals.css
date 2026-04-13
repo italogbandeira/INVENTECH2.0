@@ -1,10 +1,23 @@
 @import "tailwindcss";
 
+/**
+ * Variáveis globais base da aplicação.
+ *
+ * Hoje o projeto usa um tema simples com fundo claro.
+ * No futuro, isso pode ser expandido para dark mode,
+ * branding da empresa ou temas por ambiente.
+ */
 :root {
   --background: #ffffff;
   --foreground: #171717;
 }
 
+/**
+ * Integração das variáveis globais com o sistema de tema do Tailwind v4.
+ *
+ * Isso permite usar as cores e fontes como tokens reutilizáveis
+ * em toda a aplicação.
+ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -12,7 +25,15 @@
   --font-mono: var(--font-geist-mono);
 }
 
-
+/**
+ * Estilo base do body.
+ *
+ * Observação:
+ * Apesar de as fontes Geist terem sido configuradas no layout,
+ * aqui o body ainda está usando Arial/Helvetica.
+ * Se quiser padronizar tudo com Geist, futuramente pode trocar
+ * para var(--font-geist-sans).
+ */
 body {
   background: var(--background);
   color: var(--foreground);

@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { exigeLogin } from "@/lib/auth";
 import { criarLogAuditoria } from "@/lib/auditoria";
 
+/**
+ * Snapshot enxuto da máquina usado nos logs de auditoria.
+ */
 function snapshotMaquina(maquina: {
   id: number;
   numero_serie: string;
@@ -33,6 +36,9 @@ function snapshotMaquina(maquina: {
   };
 }
 
+/**
+ * Extrai dados mínimos do autor da ação para auditoria.
+ */
 function autorAuditoria(logado: {
   id: number;
   nome: string;
@@ -46,13 +52,25 @@ function autorAuditoria(logado: {
   };
 }
 
+/**
+ * POST /api/maquinas/excluir-selecionadas
+ *
+ * Responsabilidades:
+ * - exigir autenticação
+ * - validar confirmação textual
+ * - validar IDs recebidos
+ * - excluir várias máquinas
+ * - registrar auditoria individual por máquina
+ */
 export async function POST(req: Request) {
   try {
     const logado = await exigeLogin();
     const body = await req.json();
 
     const ids = Array.isArray(body?.ids)
-      ? body.ids.map((item: unknown) => Number(item)).filter((id: number) => !Number.isNaN(id))
+      ? body.ids
+          .map((item: unknown) => Number(item))
+          .filter((id: number) => !Number.isNaN(id))
       : [];
 
     const confirmacao = String(body?.confirmacao ?? "").trim();
@@ -86,6 +104,9 @@ export async function POST(req: Request) {
       );
     }
 
+    /**
+     * Exclui uma por uma para conseguir auditar cada item individualmente.
+     */
     for (const maquina of maquinas) {
       const antes = snapshotMaquina(maquina);
 

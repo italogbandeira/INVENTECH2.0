@@ -36,44 +36,49 @@ export default function NovaMaquinaPage() {
 
   useEffect(() => {
     async function carregarFiltros() {
-      const [
-        setoresRes,
-        usuariosRes,
-        tiposRes,
-        modelosRes,
-        contratosRes,
-        origensRes,
-      ] = await Promise.all([
-        fetch("/api/setores"),
-        fetch("/api/usuarios"),
-        fetch("/api/tipos-equipamento"),
-        fetch("/api/modelos"),
-        fetch("/api/contratos"),
-        fetch("/api/origens"),
-      ]);
+      try {
+        const [
+          setoresRes,
+          usuariosRes,
+          tiposRes,
+          modelosRes,
+          contratosRes,
+          origensRes,
+        ] = await Promise.all([
+          fetch("/api/setores"),
+          fetch("/api/usuarios"),
+          fetch("/api/tipos-equipamento"),
+          fetch("/api/modelos"),
+          fetch("/api/contratos"),
+          fetch("/api/origens"),
+        ]);
 
-      const [
-        setoresData,
-        usuariosData,
-        tiposData,
-        modelosData,
-        contratosData,
-        origensData,
-      ] = await Promise.all([
-        setoresRes.json(),
-        usuariosRes.json(),
-        tiposRes.json(),
-        modelosRes.json(),
-        contratosRes.json(),
-        origensRes.json(),
-      ]);
+        const [
+          setoresData,
+          usuariosData,
+          tiposData,
+          modelosData,
+          contratosData,
+          origensData,
+        ] = await Promise.all([
+          setoresRes.json(),
+          usuariosRes.json(),
+          tiposRes.json(),
+          modelosRes.json(),
+          contratosRes.json(),
+          origensRes.json(),
+        ]);
 
-      setSetores(setoresData);
-      setUsuarios(usuariosData);
-      setTiposEquipamento(tiposData);
-      setModelos(modelosData);
-      setContratos(contratosData);
-      setOrigens(origensData);
+        setSetores(Array.isArray(setoresData) ? setoresData : []);
+        setUsuarios(Array.isArray(usuariosData) ? usuariosData : []);
+        setTiposEquipamento(Array.isArray(tiposData) ? tiposData : []);
+        setModelos(Array.isArray(modelosData) ? modelosData : []);
+        setContratos(Array.isArray(contratosData) ? contratosData : []);
+        setOrigens(Array.isArray(origensData) ? origensData : []);
+      } catch (error) {
+        console.error("Erro ao carregar filtros:", error);
+        setErro("Não foi possível carregar os filtros da tela.");
+      }
     }
 
     carregarFiltros();
@@ -83,48 +88,59 @@ export default function NovaMaquinaPage() {
     e.preventDefault();
     setErro("");
     setSalvando(true);
-if (!numeroSerie.trim()) {
-  setErro("Informe o número de série.");
-  return;
-}
 
-if (!setorId) {
-  setErro("Selecione um setor.");
-  return;
-}
-
-    const response = await fetch("/api/maquinas", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        numero_serie: numeroSerie.trim(),
-        setor_id: Number(setorId),
-        usuario_id: usuarioId ? Number(usuarioId) : null,
-        tipo_equipamento_id: tipoEquipamentoId
-          ? Number(tipoEquipamentoId)
-          : null,
-        modelo_id: modeloId ? Number(modeloId) : null,
-        contrato_id: contratoId ? Number(contratoId) : null,
-        origem_id: origemId ? Number(origemId) : null,
-        observacoes: observacoes || null,
-        esset: esset || null,
-        termo_responsabilidade: termoResponsabilidade || null,
-        numero_termo_responsabilidade: numeroTermoResponsabilidade || null,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setErro(data.error || "Erro ao cadastrar máquina.");
+    if (!numeroSerie.trim()) {
+      setErro("Informe o número de série.");
       setSalvando(false);
       return;
     }
 
-    router.push("/?sucesso=maquina-criada");
-    router.refresh();
+    if (!setorId) {
+      setErro("Selecione um setor.");
+      setSalvando(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/maquinas", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          numero_serie: numeroSerie.trim(),
+          setor_id: Number(setorId),
+          usuario_id: usuarioId ? Number(usuarioId) : null,
+          tipo_equipamento_id: tipoEquipamentoId
+            ? Number(tipoEquipamentoId)
+            : null,
+          modelo_id: modeloId ? Number(modeloId) : null,
+          contrato_id: contratoId ? Number(contratoId) : null,
+          origem_id: origemId ? Number(origemId) : null,
+          observacoes: observacoes.trim() || null,
+          esset: esset.trim() || null,
+          termo_responsabilidade: termoResponsabilidade.trim() || null,
+          numero_termo_responsabilidade:
+            numeroTermoResponsabilidade.trim() || null,
+        }),
+      });
+
+      const texto = await response.text();
+      const data = texto ? JSON.parse(texto) : null;
+
+      if (!response.ok) {
+        setErro(data?.error || data?.erro || "Erro ao cadastrar máquina.");
+        return;
+      }
+
+      router.push("/?sucesso=maquina-criada");
+      router.refresh();
+    } catch (error) {
+      console.error("Erro ao cadastrar máquina:", error);
+      setErro("Erro ao cadastrar máquina.");
+    } finally {
+      setSalvando(false);
+    }
   }
 
   return (

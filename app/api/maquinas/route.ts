@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigeLogin } from "@/lib/auth";
 import { criarLogAuditoria } from "@/lib/auditoria";
 
-type NovaMaquinaBody = {
+type CriarMaquinaBody = {
   numero_serie: string;
   setor_id: number;
   usuario_id?: number | null;
@@ -60,28 +60,12 @@ function autorAuditoria(logado: {
   };
 }
 
-export async function GET() {
-  try {
-    const maquinas = await prisma.maquinas.findMany({
-      orderBy: { id: "desc" },
-    });
-
-    return NextResponse.json(maquinas);
-  } catch (error) {
-    console.error("Erro ao buscar máquinas:", error);
-    return NextResponse.json(
-      { error: "Erro ao buscar máquinas." },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
   try {
     const logado = await exigeLogin();
-    const body = (await request.json()) as NovaMaquinaBody;
+    const body = (await req.json()) as CriarMaquinaBody;
 
-    const numeroSerie = body.numero_serie?.trim();
+    const numeroSerie = body?.numero_serie?.trim();
 
     if (!numeroSerie) {
       return NextResponse.json(
@@ -90,18 +74,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!body.setor_id) {
+    if (!body?.setor_id) {
       return NextResponse.json(
         { error: "Setor é obrigatório." },
         { status: 400 }
       );
     }
 
-    const existente = await prisma.maquinas.findFirst({
-      where: { numero_serie: numeroSerie },
+    const duplicada = await prisma.maquinas.findFirst({
+      where: {
+        numero_serie: numeroSerie,
+      },
     });
 
-    if (existente) {
+    if (duplicada) {
       return NextResponse.json(
         { error: "Já existe uma máquina com esse número de série." },
         { status: 400 }
@@ -111,7 +97,7 @@ export async function POST(request: NextRequest) {
     const maquina = await prisma.maquinas.create({
       data: {
         numero_serie: numeroSerie,
-        setor_id: body.setor_id,
+        setor_id: Number(body.setor_id),
         usuario_id: body.usuario_id ?? null,
         tipo_equipamento_id: body.tipo_equipamento_id ?? null,
         modelo_id: body.modelo_id ?? null,
@@ -138,10 +124,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(maquina, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message === "NAO_AUTENTICADO") {
-      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+      return NextResponse.json(
+        { error: "Não autenticado." },
+        { status: 401 }
+      );
     }
 
     console.error("Erro ao cadastrar máquina:", error);
+
     return NextResponse.json(
       { error: "Erro ao cadastrar máquina." },
       { status: 500 }
