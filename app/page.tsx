@@ -868,7 +868,7 @@ function HomeContent() {
                 disabled={exportando}
                 className="rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {exportando ? "Exportando..." : "Exportar tudo do filtro"}
+                {exportando ? "Exportando..." : "Exportar tudo"}
               </button>
             </div>
           </div>
