@@ -79,6 +79,7 @@ const TIPOS_DOCUMENTO = [
  * - permitir vincular e remover vínculo
  * - listar documentos anexados
  * - permitir upload, substituição e remoção de documentos
+ * - permitir geração do TR para impressão
  * - exibir mensagens de erro e sucesso
  */
 export default function UsuarioDetalhePage({ params }: Props) {
@@ -116,6 +117,12 @@ export default function UsuarioDetalhePage({ params }: Props) {
   const [removendoDocumentoId, setRemovendoDocumentoId] = useState<number | null>(
     null
   );
+
+  /**
+   * Controla qual tipo de documento está sendo usado
+   * para geração do TR.
+   */
+  const [gerandoTipo, setGerandoTipo] = useState<string | null>(null);
 
   /**
    * Mensagens exibidas ao usuário.
@@ -380,6 +387,57 @@ export default function UsuarioDetalhePage({ params }: Props) {
       setErro("Não foi possível remover o documento.");
     } finally {
       setRemovendoDocumentoId(null);
+    }
+  }
+
+  /**
+   * Gera o Termo de Responsabilidade em PDF para impressão.
+   *
+   * Importante:
+   * - não salva automaticamente no sistema
+   * - não substitui o documento anexado
+   * - o objetivo é baixar/imprimir, coletar assinatura e depois subir manualmente
+   */
+  async function handleGerarTR(tipo: string) {
+    if (!usuarioId) return;
+
+    try {
+      setErro("");
+      setMensagemSucesso("");
+      setGerandoTipo(tipo);
+
+      const response = await fetch(
+        `/api/usuarios/${usuarioId}/documentos/gerar-tr`,
+        {
+          method: "POST",
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.erro || "Erro ao gerar termo.");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `TR-usuario-${usuarioId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(url);
+
+      setMensagemSucesso(
+        "TR gerado com sucesso. Agora imprima, colha a assinatura e faça o upload manual."
+      );
+    } catch (error) {
+      console.error(error);
+      setErro("Não foi possível gerar o termo.");
+    } finally {
+      setGerandoTipo(null);
     }
   }
 
@@ -708,6 +766,14 @@ export default function UsuarioDetalhePage({ params }: Props) {
               const estaEnviando = uploadingTipo === item.tipo;
               const removendoEste = removendoDocumentoId === documento?.id;
 
+              /**
+               * Regra atual:
+               * o botão de gerar TR aparece no card do termo principal.
+               * Se depois você quiser ampliar para outros tipos, basta ajustar aqui.
+               */
+              const podeGerarTR = item.tipo === "cessao_indeterminada";
+              const estaGerandoTR = gerandoTipo === item.tipo;
+
               return (
                 <div
                   key={item.tipo}
@@ -774,6 +840,17 @@ export default function UsuarioDetalhePage({ params }: Props) {
                             Visualizar
                           </a>
 
+                          {podeGerarTR && (
+                            <button
+                              type="button"
+                              onClick={() => handleGerarTR(item.tipo)}
+                              disabled={estaGerandoTR}
+                              className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {estaGerandoTR ? "Gerando..." : "Gerar TR"}
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => abrirSeletorArquivo(item.tipo)}
@@ -798,14 +875,27 @@ export default function UsuarioDetalhePage({ params }: Props) {
                           Nenhum documento anexado até o momento.
                         </p>
 
-                        <button
-                          type="button"
-                          onClick={() => abrirSeletorArquivo(item.tipo)}
-                          disabled={estaEnviando}
-                          className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {estaEnviando ? "Enviando..." : "Selecionar arquivo"}
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          {podeGerarTR && (
+                            <button
+                              type="button"
+                              onClick={() => handleGerarTR(item.tipo)}
+                              disabled={estaGerandoTR}
+                              className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {estaGerandoTR ? "Gerando..." : "Gerar TR"}
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => abrirSeletorArquivo(item.tipo)}
+                            disabled={estaEnviando}
+                            className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {estaEnviando ? "Enviando..." : "Selecionar arquivo"}
+                          </button>
+                        </div>
 
                         <p className="text-xs text-slate-500">
                           Formatos aceitos: PDF, DOC, DOCX, PNG, JPG e JPEG.
