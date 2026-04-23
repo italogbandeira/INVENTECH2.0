@@ -2,12 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigeLogin } from "@/lib/auth";
 
-/**
- * Estrutura de máquina detalhada retornada para a tabela principal.
- *
- * Essa resposta já vem com nomes amigáveis de setor, usuário, contrato etc.,
- * prontos para exibição no frontend.
- */
 type MaquinaDetalhada = {
   id: number;
   numero_serie: string;
@@ -23,31 +17,6 @@ type MaquinaDetalhada = {
   numero_termo_responsabilidade: string | null;
 };
 
-/**
- * GET /api/maquinas-detalhadas
- *
- * Responsabilidades:
- * - exigir autenticação
- * - receber filtros da listagem principal
- * - montar consulta SQL com joins
- * - paginar resultados
- * - devolver total, páginas e dados detalhados
- *
- * Filtros suportados:
- * - numero_serie
- * - setor
- * - usuario
- * - tipo_equipamento
- * - modelo
- * - contrato
- * - origem
- *
- * Observação importante:
- * esta rota usa SQL dinâmico com $queryRawUnsafe.
- * Isso exige muito cuidado para não interpolar texto cru sem placeholders.
- * Neste caso, os valores estão sendo passados separadamente, o que ajuda
- * a manter a consulta segura.
- */
 export async function GET(req: Request) {
   try {
     await exigeLogin();
@@ -68,83 +37,56 @@ export async function GET(req: Request) {
       .filter(Boolean);
     const origens = searchParams.getAll("origem").map((v) => v.trim()).filter(Boolean);
 
-    /**
-     * Paginação.
-     *
-     * page: página atual
-     * limit: quantidade por página
-     * offset: deslocamento no SQL
-     */
-    const page = Number(searchParams.get("page") ?? "1");
-    const limit = Number(searchParams.get("limit") ?? "20");
+    const page = Math.max(1, Number(searchParams.get("page") ?? "1"));
+    const limit = Math.max(1, Number(searchParams.get("limit") ?? "20"));
     const offset = (page - 1) * limit;
 
-    /**
-     * A consulta é montada dinamicamente.
-     *
-     * conditions:
-     * lista de cláusulas WHERE
-     *
-     * values:
-     * valores que serão encaixados nos placeholders '?'
-     */
     const conditions: string[] = [];
     const values: (string | number)[] = [];
 
+    function addValue(value: string | number) {
+      values.push(value);
+      return `$${values.length}`;
+    }
+
     if (numeroSerie) {
-      conditions.push("m.numero_serie LIKE ?");
-      values.push(`%${numeroSerie}%`);
+      const placeholder = addValue(`%${numeroSerie}%`);
+      conditions.push(`m.numero_serie ILIKE ${placeholder}`);
     }
 
     if (setores.length > 0) {
-      const placeholders = setores.map(() => "?").join(", ");
+      const placeholders = setores.map((item) => addValue(item)).join(", ");
       conditions.push(`s.nome IN (${placeholders})`);
-      values.push(...setores);
     }
 
     if (usuarios.length > 0) {
-      const placeholders = usuarios.map(() => "?").join(", ");
+      const placeholders = usuarios.map((item) => addValue(item)).join(", ");
       conditions.push(`u.nome IN (${placeholders})`);
-      values.push(...usuarios);
     }
 
     if (tipos.length > 0) {
-      const placeholders = tipos.map(() => "?").join(", ");
+      const placeholders = tipos.map((item) => addValue(item)).join(", ");
       conditions.push(`t.nome IN (${placeholders})`);
-      values.push(...tipos);
     }
 
     if (modelos.length > 0) {
-      const placeholders = modelos.map(() => "?").join(", ");
+      const placeholders = modelos.map((item) => addValue(item)).join(", ");
       conditions.push(`mo.nome IN (${placeholders})`);
-      values.push(...modelos);
     }
 
     if (contratos.length > 0) {
-      const placeholders = contratos.map(() => "?").join(", ");
+      const placeholders = contratos.map((item) => addValue(item)).join(", ");
       conditions.push(`c.nome IN (${placeholders})`);
-      values.push(...contratos);
     }
 
     if (origens.length > 0) {
-      const placeholders = origens.map(() => "?").join(", ");
+      const placeholders = origens.map((item) => addValue(item)).join(", ");
       conditions.push(`o.nome IN (${placeholders})`);
-      values.push(...origens);
     }
 
-    /**
-     * Se houver filtros, monta WHERE.
-     * Caso contrário, a consulta roda sem cláusula WHERE.
-     */
     const whereClause =
       conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    /**
-     * Base comum da consulta:
-     * - tabela máquinas
-     * - joins com catálogos auxiliares
-     * - where dinâmico
-     */
     const queryBase = `
       FROM maquinas m
       LEFT JOIN setores s ON s.id = m.setor_id
@@ -156,20 +98,17 @@ export async function GET(req: Request) {
       ${whereClause}
     `;
 
-    /**
-     * Consulta para total de registros filtrados.
-     */
-    const totalResult = await prisma.$queryRawUnsafe<{ total: number }[]>(
+    const totalResult = await prisma.$queryRawUnsafe<{ total: bigint | number }[]>(
       `
-      SELECT COUNT(*) as total
+      SELECT COUNT(*) AS total
       ${queryBase}
       `,
       ...values
     );
 
-    /**
-     * Consulta principal paginada.
-     */
+    const limitPlaceholder = `$${values.length + 1}`;
+    const offsetPlaceholder = `$${values.length + 2}`;
+
     const dados = await prisma.$queryRawUnsafe<MaquinaDetalhada[]>(
       `
       SELECT
@@ -187,7 +126,7 @@ export async function GET(req: Request) {
         m.numero_termo_responsabilidade
       ${queryBase}
       ORDER BY m.id DESC
-      LIMIT ? OFFSET ?
+      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
       `,
       ...values,
       limit,

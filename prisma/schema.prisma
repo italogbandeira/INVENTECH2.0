@@ -1,18 +1,12 @@
-/// Gerador do cliente Prisma.
-/// O client é gerado dentro de app/generated/prisma.
 generator client {
   provider = "prisma-client"
   output   = "../app/generated/prisma"
 }
 
-/// Fonte de dados principal.
-/// Apesar de o provider ser mysql, ele também atende MariaDB nesse contexto.
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
 }
 
-/// Tabela usada como base temporária/importação bruta de máquinas.
-/// Provavelmente serve como staging antes da normalização nas tabelas finais.
 model base_maquinas_import {
   id                            Int     @id @default(autoincrement())
   numero_serie                  String? @db.VarChar(255)
@@ -30,17 +24,11 @@ model base_maquinas_import {
   numero_termo_responsabilidade String? @db.VarChar(255)
 }
 
-/// Tabela de contratos disponíveis para vincular às máquinas.
 model contratos {
   id   Int    @id @default(autoincrement())
-  nome String @unique(map: "nome") @db.VarChar(150)
+  nome String @unique(map: "uq_contratos_nome") @db.VarChar(150)
 }
 
-/// Tabela principal de máquinas do sistema.
-///
-/// Observação:
-/// Existem chaves estrangeiras implícitas no banco via IDs,
-/// mas neste schema ainda não foram modeladas todas as relações Prisma.
 model maquinas {
   id                            Int     @id @default(autoincrement())
   numero_serie                  String  @unique(map: "uq_maquinas_numero_serie") @db.VarChar(255)
@@ -63,50 +51,41 @@ model maquinas {
   @@index([usuario_id], map: "fk_maquinas_usuario")
 }
 
-/// Funcionários que acessam o sistema.
-/// Inclui autenticação e perfil de permissão.
 model Funcionario {
   id            Int            @id @default(autoincrement())
   nome          String         @db.VarChar(150)
-  email         String         @unique @db.VarChar(150)
+  email         String         @unique(map: "uq_funcionarios_email") @db.VarChar(150)
   senhaHash     String         @map("senha_hash") @db.VarChar(255)
   ativo         Boolean        @default(true)
   perfil        String         @default("operador") @db.VarChar(50)
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
-  /// Relação reversa com logs de auditoria.
   auditoriaLogs AuditoriaLog[]
 
   @@map("funcionarios")
 }
 
-/// Catálogo de modelos de equipamento.
 model modelos {
   id   Int    @id @default(autoincrement())
-  nome String @unique(map: "nome") @db.VarChar(150)
+  nome String @unique(map: "uq_modelos_nome") @db.VarChar(150)
 }
 
-/// Catálogo de origens.
 model origens {
   id   Int    @id @default(autoincrement())
-  nome String @unique(map: "nome") @db.VarChar(100)
+  nome String @unique(map: "uq_origens_nome") @db.VarChar(100)
 }
 
-/// Catálogo de setores.
 model setores {
   id   Int    @id @default(autoincrement())
-  nome String @unique(map: "nome") @db.VarChar(100)
+  nome String @unique(map: "uq_setores_nome") @db.VarChar(100)
 }
 
-/// Catálogo de tipos de equipamento.
 model tipos_equipamento {
   id   Int    @id @default(autoincrement())
-  nome String @unique(map: "nome") @db.VarChar(100)
+  nome String @unique(map: "uq_tipos_equipamento_nome") @db.VarChar(100)
 }
 
-/// Usuários finais que recebem/vinculam máquinas.
-/// Não são os mesmos "funcionários" que fazem login no sistema.
 model usuarios {
   id            Int     @id @default(autoincrement())
   nome          String  @db.VarChar(150)
@@ -114,14 +93,6 @@ model usuarios {
   login_maquina String? @db.VarChar(150)
 }
 
-/// Log de auditoria do sistema.
-///
-/// Armazena:
-/// - entidade afetada
-/// - ação executada
-/// - responsável
-/// - descrição legível
-/// - estado antes/depois da mudança
 model AuditoriaLog {
   id              Int          @id @default(autoincrement())
   entidade        String       @db.VarChar(50)
@@ -139,17 +110,13 @@ model AuditoriaLog {
 
   funcionarioRef  Funcionario? @relation(fields: [funcionarioId], references: [id])
 
-  @@index([funcionarioId])
-  @@index([entidade, entidadeId])
-  @@index([createdAt])
+  @@index([funcionarioId], map: "idx_auditoria_logs_funcionario_id")
+  @@index([entidade, entidadeId], map: "idx_auditoria_logs_entidade_entidade_id")
+  @@index([createdAt], map: "idx_auditoria_logs_created_at")
 
   @@map("auditoria_logs")
 }
 
-/// Documentos anexados a um usuário.
-///
-/// Cada registro representa um arquivo salvo no storage local,
-/// com o caminho relativo para acesso.
 model UsuarioDocumento {
   id          Int      @id @default(autoincrement())
   usuarioId   Int      @map("usuario_id")
@@ -158,7 +125,8 @@ model UsuarioDocumento {
   caminho     String   @db.VarChar(500)
   createdAt   DateTime @default(now()) @map("created_at")
 
-  @@index([usuarioId])
-  @@index([tipo])
+  @@index([usuarioId], map: "idx_usuarios_documentos_usuario_id")
+  @@index([tipo], map: "idx_usuarios_documentos_tipo")
+
   @@map("usuarios_documentos")
 }

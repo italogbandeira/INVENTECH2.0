@@ -3,9 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-/**
- * Dados básicos do usuário exibidos na tela de detalhe.
- */
 type Usuario = {
   id: number;
   nome: string;
@@ -13,9 +10,6 @@ type Usuario = {
   login_maquina: string | null;
 };
 
-/**
- * Estrutura de máquina vinculada ou disponível para vínculo.
- */
 type MaquinaVinculada = {
   id: number;
   numero_serie: string;
@@ -28,9 +22,6 @@ type MaquinaVinculada = {
   usuario_id?: number | null;
 };
 
-/**
- * Estrutura dos documentos anexados ao usuário.
- */
 type DocumentoUsuario = {
   id: number;
   usuarioId: number;
@@ -44,14 +35,6 @@ type Props = {
   params: Promise<{ id: string }>;
 };
 
-/**
- * Tipos de documentos obrigatórios tratados pela UI.
- *
- * Cada item define:
- * - tipo técnico salvo no banco
- * - título amigável
- * - descrição exibida ao operador
- */
 const TIPOS_DOCUMENTO = [
   {
     tipo: "cessao_indeterminada",
@@ -70,76 +53,29 @@ const TIPOS_DOCUMENTO = [
   },
 ] as const;
 
-/**
- * Página de detalhe de usuário.
- *
- * Responsabilidades:
- * - carregar dados básicos do usuário
- * - listar máquinas vinculadas
- * - permitir vincular e remover vínculo
- * - listar documentos anexados
- * - permitir upload, substituição e remoção de documentos
- * - permitir geração do TR para impressão
- * - exibir mensagens de erro e sucesso
- */
 export default function UsuarioDetalhePage({ params }: Props) {
   const [usuarioId, setUsuarioId] = useState<number | null>(null);
   const [usuario, setUsuario] = useState<Usuario | null>(null);
-
-  /**
-   * Máquinas já vinculadas ao usuário.
-   */
   const [maquinas, setMaquinas] = useState<MaquinaVinculada[]>([]);
-
-  /**
-   * Máquinas disponíveis para novo vínculo.
-   */
   const [maquinasDisponiveis, setMaquinasDisponiveis] = useState<
     MaquinaVinculada[]
   >([]);
-
-  /**
-   * ID da máquina escolhida no select para vincular.
-   */
   const [maquinaSelecionada, setMaquinaSelecionada] = useState("");
-
-  /**
-   * Lista de documentos atualmente cadastrados para o usuário.
-   */
   const [documentos, setDocumentos] = useState<DocumentoUsuario[]>([]);
 
-  /**
-   * Estados de controle da tela.
-   */
   const [loading, setLoading] = useState(true);
   const [salvandoVinculo, setSalvandoVinculo] = useState(false);
   const [uploadingTipo, setUploadingTipo] = useState<string | null>(null);
   const [removendoDocumentoId, setRemovendoDocumentoId] = useState<number | null>(
     null
   );
-
-  /**
-   * Controla qual tipo de documento está sendo usado
-   * para geração do TR.
-   */
   const [gerandoTipo, setGerandoTipo] = useState<string | null>(null);
 
-  /**
-   * Mensagens exibidas ao usuário.
-   */
   const [erro, setErro] = useState("");
   const [mensagemSucesso, setMensagemSucesso] = useState("");
 
-  /**
-   * Referências para os inputs de arquivo escondidos.
-   *
-   * Isso permite abrir o seletor de arquivos através de botões customizados.
-   */
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  /**
-   * Carrega os documentos anexados ao usuário.
-   */
   async function carregarDocumentos(id: string) {
     const response = await fetch(`/api/usuarios/${id}/documentos`);
     const data = await response.json();
@@ -151,13 +87,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
     setDocumentos(Array.isArray(data.documentos) ? data.documentos : []);
   }
 
-  /**
-   * Carrega todos os dados necessários da tela:
-   * - usuário
-   * - máquinas vinculadas
-   * - máquinas disponíveis
-   * - documentos
-   */
   async function carregarDetalhe() {
     try {
       setLoading(true);
@@ -194,7 +123,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
       await carregarDocumentos(id);
     } catch (error) {
       console.error(error);
-
       setErro("Não foi possível carregar o detalhe do usuário.");
       setUsuario(null);
       setMaquinas([]);
@@ -205,17 +133,10 @@ export default function UsuarioDetalhePage({ params }: Props) {
     }
   }
 
-  /**
-   * Carregamento inicial da página.
-   */
   useEffect(() => {
     carregarDetalhe();
   }, [params]);
 
-  /**
-   * Faz a mensagem de sucesso desaparecer automaticamente
-   * alguns segundos após ser exibida.
-   */
   useEffect(() => {
     if (!mensagemSucesso) return;
 
@@ -226,9 +147,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
     return () => clearTimeout(timeout);
   }, [mensagemSucesso]);
 
-  /**
-   * Vincula uma máquina disponível ao usuário atual.
-   */
   async function handleVincularMaquina() {
     if (!usuarioId || !maquinaSelecionada) return;
 
@@ -262,11 +180,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
     }
   }
 
-  /**
-   * Remove o vínculo entre uma máquina e o usuário.
-   *
-   * Exige confirmação antes de executar.
-   */
   async function handleRemoverVinculo(maquinaId: number, numeroSerie: string) {
     if (!usuarioId) return;
 
@@ -305,13 +218,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
     }
   }
 
-  /**
-   * Faz upload de um documento para um tipo específico.
-   *
-   * Observação:
-   * a regra de persistência e substituição real depende da API.
-   * A UI apenas envia o arquivo selecionado para o backend.
-   */
   async function handleUploadDocumento(tipo: string, file: File | null) {
     if (!file || !usuarioId) return;
 
@@ -343,19 +249,12 @@ export default function UsuarioDetalhePage({ params }: Props) {
     } finally {
       setUploadingTipo(null);
 
-      /**
-       * Limpa o input de arquivo para permitir reenviar o mesmo arquivo,
-       * se necessário, em uma próxima tentativa.
-       */
       if (inputRefs.current[tipo]) {
         inputRefs.current[tipo]!.value = "";
       }
     }
   }
 
-  /**
-   * Remove um documento já anexado ao usuário.
-   */
   async function handleRemoverDocumento(documentoId: number) {
     if (!usuarioId) return;
 
@@ -390,14 +289,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
     }
   }
 
-  /**
-   * Gera o Termo de Responsabilidade em PDF para impressão.
-   *
-   * Importante:
-   * - não salva automaticamente no sistema
-   * - não substitui o documento anexado
-   * - o objetivo é baixar/imprimir, coletar assinatura e depois subir manualmente
-   */
   async function handleGerarTR(tipo: string) {
     if (!usuarioId) return;
 
@@ -441,35 +332,18 @@ export default function UsuarioDetalhePage({ params }: Props) {
     }
   }
 
-  /**
-   * Retorna o documento correspondente a um tipo específico.
-   *
-   * Exemplo:
-   * - cessao_indeterminada
-   * - devolucao_equipamento
-   * - cessao_temporaria
-   */
   function obterDocumentoPorTipo(tipo: string) {
     return documentos.find((documento) => documento.tipo === tipo) ?? null;
   }
 
-  /**
-   * Formata data/hora para exibição local.
-   */
   function formatarData(data: string) {
     return new Date(data).toLocaleString("pt-BR");
   }
 
-  /**
-   * Dispara programaticamente o input de arquivo escondido.
-   */
   function abrirSeletorArquivo(tipo: string) {
     inputRefs.current[tipo]?.click();
   }
 
-  /**
-   * Resumo documental para exibição na UI.
-   */
   const totalObrigatorios = TIPOS_DOCUMENTO.length;
   const totalAnexados = TIPOS_DOCUMENTO.filter((item) =>
     obterDocumentoPorTipo(item.tipo)
@@ -479,7 +353,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        {/* Cabeçalho da página */}
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
@@ -512,7 +385,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
           </div>
         </section>
 
-        {/* Mensagens da tela */}
         {erro && (
           <section className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 shadow-sm">
             {erro}
@@ -525,7 +397,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
           </section>
         )}
 
-        {/* Informações e vínculo de máquinas */}
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           <div className="xl:col-span-1">
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
@@ -589,7 +460,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
           </div>
 
           <div className="xl:col-span-2 space-y-6">
-            {/* Card de vínculo de nova máquina */}
             <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
               <h2 className="text-lg font-semibold text-slate-900">
                 Vincular máquina
@@ -623,7 +493,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
               </div>
             </div>
 
-            {/* Tabela de máquinas já vinculadas */}
             <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
               <div className="border-b border-slate-200 p-6">
                 <h2 className="text-lg font-semibold text-slate-900">
@@ -661,35 +530,27 @@ export default function UsuarioDetalhePage({ params }: Props) {
                         <td className="p-4 text-sm text-slate-700">
                           {maquina.id}
                         </td>
-
                         <td className="p-4 text-sm font-medium text-slate-900">
                           {maquina.numero_serie}
                         </td>
-
                         <td className="p-4 text-sm text-slate-700">
                           {maquina.setor}
                         </td>
-
                         <td className="p-4 text-sm text-slate-700">
                           {maquina.tipo_equipamento}
                         </td>
-
                         <td className="p-4 text-sm text-slate-700">
                           {maquina.modelo}
                         </td>
-
                         <td className="p-4 text-sm text-slate-700">
                           {maquina.contrato}
                         </td>
-
                         <td className="p-4 text-sm text-slate-700">
                           {maquina.origem}
                         </td>
-
                         <td className="p-4 text-sm text-slate-700">
                           {maquina.esset}
                         </td>
-
                         <td className="p-4">
                           <button
                             onClick={() =>
@@ -734,7 +595,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
           </div>
         </section>
 
-        {/* Bloco de documentos */}
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
@@ -746,7 +606,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
               </p>
             </div>
 
-            {/* Resumo rápido da situação documental */}
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                 Obrigatórios: {totalObrigatorios}
@@ -765,12 +624,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
               const documento = obterDocumentoPorTipo(item.tipo);
               const estaEnviando = uploadingTipo === item.tipo;
               const removendoEste = removendoDocumentoId === documento?.id;
-
-              /**
-               * Regra atual:
-               * o botão de gerar TR aparece no card do termo principal.
-               * Se depois você quiser ampliar para outros tipos, basta ajustar aqui.
-               */
               const podeGerarTR = item.tipo === "cessao_indeterminada";
               const estaGerandoTR = gerandoTipo === item.tipo;
 
@@ -903,7 +756,6 @@ export default function UsuarioDetalhePage({ params }: Props) {
                       </div>
                     )}
 
-                    {/* Input escondido para upload controlado por botão customizado */}
                     <input
                       ref={(el) => {
                         inputRefs.current[item.tipo] = el;
