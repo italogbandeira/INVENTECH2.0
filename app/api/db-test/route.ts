@@ -3,28 +3,18 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const funcionario = await prisma.funcionario.findFirst({
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        ativo: true,
-        perfil: true,
-      },
-    });
+    const total = await prisma.funcionario.count();
 
     return NextResponse.json({
       ok: true,
-      funcionario,
+      total,
     });
   } catch (error) {
-    console.error("DB TEST ERROR:");
-    console.error(error);
+    console.error("DB TEST ERROR:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        erro: "Falha ao consultar o banco.",
         detalhe: error instanceof Error ? error.message : "Erro desconhecido",
       },
       { status: 500 }

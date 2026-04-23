@@ -76,6 +76,11 @@ export async function middleware(req: NextRequest) {
   const sessao = token ? await getSessao(token) : null;
   const autenticado = !!sessao;
 
+
+if (pathname.startsWith("/api/db-test")) {
+  return NextResponse.next();
+}
+
   if ((precisaLogin || precisaMaster) && !autenticado) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
