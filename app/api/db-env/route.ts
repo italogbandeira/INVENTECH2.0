@@ -7,4 +7,4 @@ export async function GET() {
     hasDatabaseUrl: Boolean(raw),
     preview: raw.replace(/:\/\/.*?:.*?@/, "://***:***@"),
   });
-}
+} 
