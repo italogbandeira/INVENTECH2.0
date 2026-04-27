@@ -1,13 +1,10 @@
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { exigeLogin } from "@/lib/auth";
 
-/**
- * Estrutura da linha exportada para Excel.
- *
- * Já vem com os nomes amigáveis resultantes dos JOINs.
- */
 type LinhaMaquina = {
   id: number;
   numero_serie: string;
@@ -23,18 +20,18 @@ type LinhaMaquina = {
   numero_termo_responsabilidade: string | null;
 };
 
-/**
- * POST /api/maquinas/exportar
- *
- * Responsabilidades:
- * - exigir autenticação
- * - receber filtros da tela
- * - exportar:
- *   - apenas máquinas selecionadas
- *   - ou tudo que bate no filtro
- * - gerar arquivo Excel em memória
- * - devolver o arquivo como download
- */
+function criarPlaceholdersPostgres(
+  valores: (string | number)[],
+  novosValores: (string | number)[]
+) {
+  const placeholders = novosValores.map((valor) => {
+    valores.push(valor);
+    return `$${valores.length}`;
+  });
+
+  return placeholders.join(", ");
+}
+
 export async function POST(req: Request) {
   try {
     await exigeLogin();
@@ -57,13 +54,9 @@ export async function POST(req: Request) {
     const idsSelecionados = Array.isArray(body?.idsSelecionados)
       ? body.idsSelecionados
           .map((id: unknown) => Number(id))
-          .filter((id: number) => !Number.isNaN(id))
+          .filter((id: number) => Number.isFinite(id))
       : [];
 
-    /**
-     * Se não for exportação total filtrada,
-     * então deve haver pelo menos uma máquina marcada.
-     */
     if (!exportarTudoFiltrado && idsSelecionados.length === 0) {
       return NextResponse.json(
         { erro: "Nenhuma máquina selecionada para exportação." },
@@ -71,70 +64,53 @@ export async function POST(req: Request) {
       );
     }
 
-    /**
-     * Montagem dinâmica dos filtros SQL.
-     */
     const conditions: string[] = [];
     const values: (string | number)[] = [];
 
     if (numeroSerie) {
-      conditions.push("m.numero_serie LIKE ?");
       values.push(`%${numeroSerie}%`);
+      conditions.push(`m.numero_serie ILIKE $${values.length}`);
     }
 
     if (setores.length > 0) {
-      const placeholders = setores.map(() => "?").join(", ");
+      const placeholders = criarPlaceholdersPostgres(values, setores);
       conditions.push(`s.nome IN (${placeholders})`);
-      values.push(...setores);
     }
 
     if (usuarios.length > 0) {
-      const placeholders = usuarios.map(() => "?").join(", ");
+      const placeholders = criarPlaceholdersPostgres(values, usuarios);
       conditions.push(`u.nome IN (${placeholders})`);
-      values.push(...usuarios);
     }
 
     if (tiposEquipamento.length > 0) {
-      const placeholders = tiposEquipamento.map(() => "?").join(", ");
+      const placeholders = criarPlaceholdersPostgres(values, tiposEquipamento);
       conditions.push(`t.nome IN (${placeholders})`);
-      values.push(...tiposEquipamento);
     }
 
     if (modelos.length > 0) {
-      const placeholders = modelos.map(() => "?").join(", ");
+      const placeholders = criarPlaceholdersPostgres(values, modelos);
       conditions.push(`mo.nome IN (${placeholders})`);
-      values.push(...modelos);
     }
 
     if (contratos.length > 0) {
-      const placeholders = contratos.map(() => "?").join(", ");
+      const placeholders = criarPlaceholdersPostgres(values, contratos);
       conditions.push(`c.nome IN (${placeholders})`);
-      values.push(...contratos);
     }
 
     if (origens.length > 0) {
-      const placeholders = origens.map(() => "?").join(", ");
+      const placeholders = criarPlaceholdersPostgres(values, origens);
       conditions.push(`o.nome IN (${placeholders})`);
-      values.push(...origens);
     }
 
-    /**
-     * Quando não é "tudo filtrado", restringe pelos IDs selecionados.
-     */
     if (!exportarTudoFiltrado) {
-      const placeholders = idsSelecionados.map(() => "?").join(", ");
+      const placeholders = criarPlaceholdersPostgres(values, idsSelecionados);
       conditions.push(`m.id IN (${placeholders})`);
-      values.push(...idsSelecionados);
     }
 
     const whereClause =
       conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    /**
-     * Consulta SQL com JOINs para gerar a planilha já amigável.
-     */
-    const maquinas = await prisma.$queryRawUnsafe<LinhaMaquina[]>(
-      `
+    const query = `
       SELECT
         m.id,
         m.numero_serie,
@@ -157,47 +133,41 @@ export async function POST(req: Request) {
       LEFT JOIN origens o ON o.id = m.origem_id
       ${whereClause}
       ORDER BY m.id ASC
-      `,
+    `;
+
+    const maquinas = await prisma.$queryRawUnsafe<LinhaMaquina[]>(
+      query,
       ...values
     );
 
-    /**
-     * Cria workbook e worksheet em memória.
-     */
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Máquinas");
 
-    /**
-     * Define colunas, cabeçalhos e larguras.
-     */
     sheet.columns = [
       { header: "ID", key: "id", width: 10 },
       { header: "Número de Série", key: "numero_serie", width: 24 },
-      { header: "Setor", key: "setor", width: 20 },
-      { header: "Usuário", key: "usuario", width: 24 },
+      { header: "Setor", key: "setor", width: 24 },
+      { header: "Usuário", key: "usuario", width: 28 },
       { header: "Tipo", key: "tipo_equipamento", width: 20 },
       { header: "Modelo", key: "modelo", width: 24 },
       { header: "Contrato", key: "contrato", width: 20 },
       { header: "Origem", key: "origem", width: 20 },
       { header: "ESSET", key: "esset", width: 16 },
-      { header: "Observações", key: "observacoes", width: 30 },
+      { header: "Observações", key: "observacoes", width: 40 },
       {
         header: "Termo de Responsabilidade",
         key: "termo_responsabilidade",
-        width: 24,
+        width: 28,
       },
       {
         header: "Número do Termo",
         key: "numero_termo_responsabilidade",
-        width: 24,
+        width: 28,
       },
     ];
 
     sheet.getRow(1).font = { bold: true };
 
-    /**
-     * Preenche as linhas da planilha.
-     */
     maquinas.forEach((maquina) => {
       sheet.addRow({
         id: maquina.id,
@@ -230,8 +200,16 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Erro ao exportar Excel:", error);
 
+    const mensagem =
+      error instanceof Error
+        ? error.message
+        : "Erro desconhecido ao exportar Excel.";
+
     return NextResponse.json(
-      { erro: "Erro interno ao exportar Excel." },
+      {
+        erro: "Erro interno ao exportar Excel.",
+        detalhe: mensagem,
+      },
       { status: 500 }
     );
   }
