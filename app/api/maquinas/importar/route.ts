@@ -1,469 +1,647 @@
+export const runtime = "nodejs";
+
+import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
 import { parse } from "csv-parse/sync";
+import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
-import { exigeMaster } from "@/lib/auth";
-import { criarLogAuditoria } from "@/lib/auditoria";
+import { exigeLogin } from "@/lib/auth";
 
-/**
- * Estrutura esperada de cada linha do CSV importado.
- *
- * Os nomes das colunas já são os nomes normalizados após o parser.
- */
-type LinhaCsv = {
-  serial?: string;
-  criado_em?: string;
-  setor?: string;
-  usuario?: string;
-  empresa_contrato?: string;
-  modelo?: string;
-  categoria?: string;
-  descricao?: string;
-  contrato?: string;
-  ip_maquina?: string;
-  origem?: string;
+type RegistroImportacao = Record<string, string>;
+
+type RegistroComLinha = {
+  linha: number;
+  dados: RegistroImportacao;
 };
 
-/**
- * Converte valores vazios para null.
- */
-function textoOuNull(valor: unknown) {
-  const texto = String(valor ?? "").trim();
-  return texto ? texto : null;
-}
+type ResultadoLeitura = {
+  tipo: "csv" | "xlsx";
+  headers: string[];
+  registros: RegistroComLinha[];
+};
 
-/**
- * Retorna texto obrigatório já com trim.
- */
-function textoObrigatorio(valor: unknown) {
+const ALIASES_HEADERS: Record<string, string> = {
+  numero_serie: "numero_serie",
+  n_serie: "numero_serie",
+  numero_de_serie: "numero_serie",
+  numero_serial: "numero_serie",
+  serial: "numero_serie",
+  serie: "numero_serie",
+  patrimonio: "numero_serie",
+  patrimonial: "numero_serie",
+
+  setor: "setor",
+
+  usuario: "usuario",
+  usuário: "usuario",
+  nome_usuario: "usuario",
+  nome_do_usuario: "usuario",
+  colaborador: "usuario",
+  funcionario: "usuario",
+  funcionário: "usuario",
+
+  login_email: "login_email",
+  email: "login_email",
+  e_mail: "login_email",
+  login: "login_email",
+
+  login_maquina: "login_maquina",
+  login_da_maquina: "login_maquina",
+  usuario_maquina: "login_maquina",
+  usuário_máquina: "login_maquina",
+
+  tipo: "tipo_equipamento",
+  tipo_equipamento: "tipo_equipamento",
+  tipo_de_equipamento: "tipo_equipamento",
+  equipamento: "tipo_equipamento",
+  categoria: "tipo_equipamento",
+
+  modelo: "modelo",
+
+  contrato: "contrato",
+
+  origem: "origem",
+
+  observacao: "observacoes",
+  observacaoes: "observacoes",
+  observacoes: "observacoes",
+  observações: "observacoes",
+  descricao: "observacoes",
+  descrição: "observacoes",
+
+  esset: "esset",
+  asset: "esset",
+  ativo: "esset",
+
+  termo_responsabilidade: "termo_responsabilidade",
+  termo_de_responsabilidade: "termo_responsabilidade",
+
+  numero_termo_responsabilidade: "numero_termo_responsabilidade",
+  numero_do_termo: "numero_termo_responsabilidade",
+  numero_termo: "numero_termo_responsabilidade",
+  n_termo: "numero_termo_responsabilidade",
+};
+
+function normalizarTexto(valor: unknown): string {
   return String(valor ?? "").trim();
 }
 
-/**
- * Normaliza cabeçalhos do CSV:
- * - remove acentos
- * - trim
- * - lowercase
- *
- * Isso ajuda a aceitar arquivos com pequenas variações no cabeçalho.
- */
-function normalizarCabecalho(texto: string) {
-  return texto
+function normalizarHeader(valor: unknown): string {
+  const chave = String(valor ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
     .trim()
-    .toLowerCase();
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+
+  return ALIASES_HEADERS[chave] ?? chave;
 }
 
-/**
- * Snapshot de máquina para auditoria.
- */
-function snapshotMaquina(maquina: {
-  id: number;
-  numero_serie: string;
-  setor_id: number;
-  usuario_id: number | null;
-  tipo_equipamento_id: number | null;
-  modelo_id: number | null;
-  contrato_id: number | null;
-  origem_id: number | null;
-  observacoes: string | null;
-  esset: string | null;
-  termo_responsabilidade: string | null;
-  numero_termo_responsabilidade: string | null;
-}) {
+function vazioParaNull(valor: string): string | null {
+  const limpo = normalizarTexto(valor);
+  return limpo.length > 0 ? limpo : null;
+}
+
+function detectarDelimitador(texto: string): string {
+  const primeiraLinha =
+    texto
+      .split(/\r?\n/)
+      .find((linha) => linha.trim().length > 0) ?? "";
+
+  const qtdPontoVirgula = (primeiraLinha.match(/;/g) ?? []).length;
+  const qtdVirgula = (primeiraLinha.match(/,/g) ?? []).length;
+  const qtdTab = (primeiraLinha.match(/\t/g) ?? []).length;
+
+  if (qtdPontoVirgula >= qtdVirgula && qtdPontoVirgula >= qtdTab) {
+    return ";";
+  }
+
+  if (qtdTab >= qtdVirgula) {
+    return "\t";
+  }
+
+  return ",";
+}
+
+function decodificarTextoCsv(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
+function arquivoEhXlsx(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 4 &&
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4b &&
+    bytes[2] === 0x03 &&
+    bytes[3] === 0x04
+  );
+}
+
+function arquivoEhXlsAntigo(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 4 &&
+    bytes[0] === 0xd0 &&
+    bytes[1] === 0xcf &&
+    bytes[2] === 0x11 &&
+    bytes[3] === 0xe0
+  );
+}
+
+function lerCsv(bytes: Uint8Array): ResultadoLeitura {
+  const textoCsv = decodificarTextoCsv(bytes);
+  const delimitador = detectarDelimitador(textoCsv);
+
+  const registros = parse(textoCsv, {
+    columns: (headers: string[]) => headers.map((header) => normalizarHeader(header)),
+    bom: true,
+    delimiter: delimitador,
+    skip_empty_lines: true,
+    trim: true,
+    relax_quotes: true,
+    relax_column_count: true,
+  }) as RegistroImportacao[];
+
+  const headers =
+    registros.length > 0
+      ? Object.keys(registros[0])
+      : [];
+
   return {
-    id: maquina.id,
-    numero_serie: maquina.numero_serie,
-    setor_id: maquina.setor_id,
-    usuario_id: maquina.usuario_id,
-    tipo_equipamento_id: maquina.tipo_equipamento_id,
-    modelo_id: maquina.modelo_id,
-    contrato_id: maquina.contrato_id,
-    origem_id: maquina.origem_id,
-    observacoes: maquina.observacoes,
-    esset: maquina.esset,
-    termo_responsabilidade: maquina.termo_responsabilidade,
-    numero_termo_responsabilidade: maquina.numero_termo_responsabilidade,
+    tipo: "csv",
+    headers,
+    registros: registros.map((dados, index) => ({
+      linha: index + 2,
+      dados,
+    })),
   };
 }
 
-/**
- * Extrai dados mínimos do autor da importação para auditoria.
- */
-function autorAuditoria(logado: {
-  id: number;
-  nome: string;
-  email: string;
-  perfil: string;
-}) {
+function valorCelulaExcel(valor: ExcelJS.CellValue): string {
+  if (valor === null || valor === undefined) {
+    return "";
+  }
+
+  if (valor instanceof Date) {
+    return valor.toISOString().slice(0, 10);
+  }
+
+  if (typeof valor === "object") {
+    const objeto = valor as {
+      text?: string;
+      richText?: { text: string }[];
+      result?: unknown;
+      formula?: string;
+      hyperlink?: string;
+    };
+
+    if (Array.isArray(objeto.richText)) {
+      return objeto.richText.map((parte) => parte.text).join("");
+    }
+
+    if (objeto.text !== undefined) {
+      return String(objeto.text);
+    }
+
+    if (objeto.result !== undefined) {
+      return String(objeto.result);
+    }
+
+    if (objeto.formula !== undefined) {
+      return String(objeto.result ?? "");
+    }
+  }
+
+  return String(valor);
+}
+
+async function lerXlsx(bytes: Uint8Array): Promise<ResultadoLeitura> {
+  const workbook = new ExcelJS.Workbook();
+
+  const bufferXlsx = Buffer.from(bytes) as unknown as Parameters<
+    typeof workbook.xlsx.load
+  >[0];
+
+  await workbook.xlsx.load(bufferXlsx);
+
+  const sheet = workbook.worksheets[0];
+
+  if (!sheet) {
+    return {
+      tipo: "xlsx",
+      headers: [],
+      registros: [],
+    };
+  }
+
+  const primeiraLinha = sheet.getRow(1);
+  const headers: string[] = [];
+
+  primeiraLinha.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+    headers[colNumber - 1] = normalizarHeader(valorCelulaExcel(cell.value));
+  });
+
+  const registros: RegistroComLinha[] = [];
+
+  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+    const row = sheet.getRow(rowNumber);
+    const dados: RegistroImportacao = {};
+
+    headers.forEach((header, index) => {
+      if (!header) return;
+
+      const valor = normalizarTexto(
+        valorCelulaExcel(row.getCell(index + 1).value)
+      );
+
+      dados[header] = valor;
+    });
+
+    const temAlgumValor = Object.values(dados).some(
+      (valor) => normalizarTexto(valor).length > 0
+    );
+
+    if (temAlgumValor) {
+      registros.push({
+        linha: rowNumber,
+        dados,
+      });
+    }
+  }
+
   return {
-    id: logado.id,
-    nome: logado.nome,
-    email: logado.email,
+    tipo: "xlsx",
+    headers,
+    registros,
   };
 }
 
-/**
- * Helpers de "buscar ou criar" para os catálogos auxiliares.
- *
- * Estratégia:
- * - se existir, retorna ID existente
- * - se não existir, cria e retorna o novo ID
- *
- * Isso permite que a importação alimente automaticamente os catálogos.
- */
-async function buscarOuCriarSetor(nome: string | null) {
-  if (!nome) return null;
-
-  const existente = await prisma.setores.findFirst({
-    where: { nome },
-  });
-
-  if (existente) return existente.id;
-
-  const criado = await prisma.setores.create({
-    data: { nome },
-  });
-
-  return criado.id;
+function campo(registro: RegistroImportacao, nome: string): string {
+  return normalizarTexto(registro[nome]);
 }
 
-async function buscarOuCriarUsuario(nome: string | null) {
-  if (!nome) return null;
+async function obterIdSetor(nome: string, cache: Map<string, number>) {
+  const nomeLimpo = nome || "Sem setor";
 
-  const existente = await prisma.usuarios.findFirst({
-    where: { nome },
+  if (cache.has(nomeLimpo)) {
+    return cache.get(nomeLimpo)!;
+  }
+
+  const item = await prisma.setores.upsert({
+    where: { nome: nomeLimpo },
+    update: {},
+    create: { nome: nomeLimpo },
+    select: { id: true },
   });
 
-  if (existente) return existente.id;
-
-  const criado = await prisma.usuarios.create({
-    data: { nome },
-  });
-
-  return criado.id;
+  cache.set(nomeLimpo, item.id);
+  return item.id;
 }
 
-async function buscarOuCriarTipoEquipamento(nome: string | null) {
-  if (!nome) return null;
+async function obterIdTipoEquipamento(
+  nome: string,
+  cache: Map<string, number>
+) {
+  const nomeLimpo = normalizarTexto(nome);
 
-  const existente = await prisma.tipos_equipamento.findFirst({
-    where: { nome },
+  if (!nomeLimpo) {
+    return null;
+  }
+
+  if (cache.has(nomeLimpo)) {
+    return cache.get(nomeLimpo)!;
+  }
+
+  const item = await prisma.tipos_equipamento.upsert({
+    where: { nome: nomeLimpo },
+    update: {},
+    create: { nome: nomeLimpo },
+    select: { id: true },
   });
 
-  if (existente) return existente.id;
-
-  const criado = await prisma.tipos_equipamento.create({
-    data: { nome },
-  });
-
-  return criado.id;
+  cache.set(nomeLimpo, item.id);
+  return item.id;
 }
 
-async function buscarOuCriarModelo(nome: string | null) {
-  if (!nome) return null;
+async function obterIdModelo(nome: string, cache: Map<string, number>) {
+  const nomeLimpo = normalizarTexto(nome);
 
-  const existente = await prisma.modelos.findFirst({
-    where: { nome },
+  if (!nomeLimpo) {
+    return null;
+  }
+
+  if (cache.has(nomeLimpo)) {
+    return cache.get(nomeLimpo)!;
+  }
+
+  const item = await prisma.modelos.upsert({
+    where: { nome: nomeLimpo },
+    update: {},
+    create: { nome: nomeLimpo },
+    select: { id: true },
   });
 
-  if (existente) return existente.id;
-
-  const criado = await prisma.modelos.create({
-    data: { nome },
-  });
-
-  return criado.id;
+  cache.set(nomeLimpo, item.id);
+  return item.id;
 }
 
-async function buscarOuCriarContrato(nome: string | null) {
-  if (!nome) return null;
+async function obterIdContrato(nome: string, cache: Map<string, number>) {
+  const nomeLimpo = normalizarTexto(nome);
 
-  const existente = await prisma.contratos.findFirst({
-    where: { nome },
+  if (!nomeLimpo) {
+    return null;
+  }
+
+  if (cache.has(nomeLimpo)) {
+    return cache.get(nomeLimpo)!;
+  }
+
+  const item = await prisma.contratos.upsert({
+    where: { nome: nomeLimpo },
+    update: {},
+    create: { nome: nomeLimpo },
+    select: { id: true },
   });
 
-  if (existente) return existente.id;
-
-  const criado = await prisma.contratos.create({
-    data: { nome },
-  });
-
-  return criado.id;
+  cache.set(nomeLimpo, item.id);
+  return item.id;
 }
 
-async function buscarOuCriarOrigem(nome: string | null) {
-  if (!nome) return null;
+async function obterIdOrigem(nome: string, cache: Map<string, number>) {
+  const nomeLimpo = normalizarTexto(nome);
 
-  const existente = await prisma.origens.findFirst({
-    where: { nome },
+  if (!nomeLimpo) {
+    return null;
+  }
+
+  if (cache.has(nomeLimpo)) {
+    return cache.get(nomeLimpo)!;
+  }
+
+  const item = await prisma.origens.upsert({
+    where: { nome: nomeLimpo },
+    update: {},
+    create: { nome: nomeLimpo },
+    select: { id: true },
   });
 
-  if (existente) return existente.id;
-
-  const criado = await prisma.origens.create({
-    data: { nome },
-  });
-
-  return criado.id;
+  cache.set(nomeLimpo, item.id);
+  return item.id;
 }
 
-/**
- * POST /api/maquinas/importar
- *
- * Responsabilidades:
- * - exigir acesso master
- * - receber CSV via multipart/form-data
- * - decodificar e interpretar o arquivo
- * - validar colunas mínimas
- * - criar ou atualizar máquinas
- * - alimentar catálogos auxiliares automaticamente
- * - registrar auditoria das criações e atualizações
- * - devolver resumo da importação
- */
+async function obterIdUsuario(
+  nome: string,
+  loginEmail: string,
+  loginMaquina: string,
+  cache: Map<string, number>
+) {
+  const nomeLimpo = normalizarTexto(nome);
+  const emailLimpo = normalizarTexto(loginEmail);
+  const loginMaquinaLimpo = normalizarTexto(loginMaquina);
+
+  if (!nomeLimpo && !emailLimpo && !loginMaquinaLimpo) {
+    return null;
+  }
+
+  const chave = `${nomeLimpo}|${emailLimpo}|${loginMaquinaLimpo}`;
+
+  if (cache.has(chave)) {
+    return cache.get(chave)!;
+  }
+
+  const or = [
+    emailLimpo ? { login_email: emailLimpo } : null,
+    loginMaquinaLimpo ? { login_maquina: loginMaquinaLimpo } : null,
+    nomeLimpo ? { nome: nomeLimpo } : null,
+  ].filter(Boolean) as {
+    login_email?: string;
+    login_maquina?: string;
+    nome?: string;
+  }[];
+
+  const usuarioExistente = await prisma.usuarios.findFirst({
+    where: {
+      OR: or,
+    },
+    select: { id: true },
+  });
+
+  if (usuarioExistente) {
+    await prisma.usuarios.update({
+      where: { id: usuarioExistente.id },
+      data: {
+        nome: nomeLimpo || undefined,
+        login_email: emailLimpo || undefined,
+        login_maquina: loginMaquinaLimpo || undefined,
+      },
+    });
+
+    cache.set(chave, usuarioExistente.id);
+    return usuarioExistente.id;
+  }
+
+  const novoUsuario = await prisma.usuarios.create({
+    data: {
+      nome: nomeLimpo || emailLimpo || loginMaquinaLimpo || "Usuário sem nome",
+      login_email: emailLimpo || null,
+      login_maquina: loginMaquinaLimpo || null,
+    },
+    select: { id: true },
+  });
+
+  cache.set(chave, novoUsuario.id);
+  return novoUsuario.id;
+}
+
 export async function POST(req: Request) {
   try {
-    const logado = await exigeMaster();
-    const formData = await req.formData();
-    const arquivo = formData.get("arquivo");
+    await exigeLogin();
 
-    if (!(arquivo instanceof File)) {
+    const formData = await req.formData();
+
+    const entradaArquivo =
+      formData.get("arquivo") ?? formData.get("file") ?? formData.get("csv");
+
+    if (
+      !entradaArquivo ||
+      typeof entradaArquivo === "string" ||
+      typeof entradaArquivo.arrayBuffer !== "function"
+    ) {
       return NextResponse.json(
-        { erro: "Arquivo CSV é obrigatório." },
+        { erro: "Nenhum arquivo foi enviado." },
         { status: 400 }
       );
     }
 
+    const arquivo = entradaArquivo as File;
     const bytes = new Uint8Array(await arquivo.arrayBuffer());
 
-    /**
-     * Primeiro tenta UTF-8.
-     * Se aparecer caractere quebrado, tenta Windows-1252.
-     *
-     * Isso ajuda bastante com CSV exportado de Excel antigo.
-     */
-    let conteudo = new TextDecoder("utf-8").decode(bytes);
-
-    if (conteudo.includes("�")) {
-      conteudo = new TextDecoder("windows-1252").decode(bytes);
+    if (bytes.length === 0) {
+      return NextResponse.json(
+        { erro: "O arquivo enviado está vazio." },
+        { status: 400 }
+      );
     }
 
-    /**
-     * Faz parse do CSV.
-     *
-     * Regras atuais:
-     * - delimitador ;
-     * - cabeçalho normalizado
-     * - ignora linhas vazias
-     */
-    const linhas = parse(conteudo, {
-      columns: (header: string[]) => header.map(normalizarCabecalho),
-      delimiter: ";",
-      skip_empty_lines: true,
-      trim: true,
-      bom: true,
-      relax_column_count: true,
-    }) as LinhaCsv[];
-
-    /**
-     * Valida colunas mínimas obrigatórias para processar o arquivo.
-     */
-    const colunasObrigatorias = ["serial", "setor"];
-    const primeiraLinha = linhas[0] ?? {};
-    const colunasEncontradas = Object.keys(primeiraLinha);
-
-    const faltando = colunasObrigatorias.filter(
-      (coluna) => !colunasEncontradas.includes(coluna)
-    );
-
-    if (faltando.length > 0) {
+    if (arquivoEhXlsAntigo(bytes)) {
       return NextResponse.json(
         {
-          erro: `CSV inválido. Coluna(s) obrigatória(s) não encontrada(s): ${faltando.join(", ")}.`,
+          erro:
+            "Arquivo .xls antigo não é suportado. Salve como CSV UTF-8 ou como .xlsx e tente novamente.",
         },
         { status: 400 }
       );
     }
 
-    /**
-     * Acumulador de resultado final exibido na UI.
-     */
-    const resultado = {
-      total: linhas.length,
-      criadas: 0,
-      atualizadas: 0,
-      ignoradas: 0,
-      erros: [] as Array<{ linha: number; erro: string }>,
-    };
+    let leitura: ResultadoLeitura;
 
-    /**
-     * Processa o CSV linha a linha.
-     *
-     * index + 2:
-     * soma 2 porque index começa em 0 e o CSV tem cabeçalho na linha 1.
-     */
-    for (let index = 0; index < linhas.length; index++) {
-      const linha = linhas[index];
+    if (arquivoEhXlsx(bytes)) {
+      leitura = await lerXlsx(bytes);
+    } else {
+      leitura = lerCsv(bytes);
+    }
 
-      try {
-        const numeroSerie = textoObrigatorio(linha.serial);
-        const setorNome = textoObrigatorio(linha.setor);
+    if (leitura.registros.length === 0) {
+      return NextResponse.json(
+        {
+          erro:
+            "Nenhuma linha válida foi encontrada no arquivo. Verifique se a primeira linha contém os cabeçalhos.",
+        },
+        { status: 400 }
+      );
+    }
 
-        if (!numeroSerie) {
-          resultado.erros.push({
-            linha: index + 2,
-            erro: "Número de série é obrigatório.",
-          });
-          continue;
-        }
+    if (!leitura.headers.includes("numero_serie")) {
+      return NextResponse.json(
+        {
+          erro:
+            "A coluna de número de série não foi encontrada. Use um cabeçalho como: numero_serie, número de série, serial ou patrimônio.",
+          headersEncontrados: leitura.headers,
+        },
+        { status: 400 }
+      );
+    }
 
-        if (!setorNome) {
-          resultado.erros.push({
-            linha: index + 2,
-            erro: "Setor é obrigatório.",
-          });
-          continue;
-        }
+    const cacheSetores = new Map<string, number>();
+    const cacheUsuarios = new Map<string, number>();
+    const cacheTipos = new Map<string, number>();
+    const cacheModelos = new Map<string, number>();
+    const cacheContratos = new Map<string, number>();
+    const cacheOrigens = new Map<string, number>();
 
-        /**
-         * Resolve ou cria os relacionamentos necessários.
-         */
-        const setorId = await buscarOuCriarSetor(setorNome);
-        const usuarioId = await buscarOuCriarUsuario(textoOuNull(linha.usuario));
-        const tipoEquipamentoId = await buscarOuCriarTipoEquipamento(
-          textoOuNull(linha.categoria)
-        );
-        const modeloId = await buscarOuCriarModelo(textoOuNull(linha.modelo));
-        const contratoId = await buscarOuCriarContrato(textoOuNull(linha.contrato));
-        const origemId = await buscarOuCriarOrigem(textoOuNull(linha.origem));
+    let criados = 0;
+    let atualizados = 0;
 
-        /**
-         * Payload padronizado que será usado tanto para criação
-         * quanto para atualização.
-         */
-        const payload = {
-          numero_serie: numeroSerie,
-          setor_id: setorId!,
-          usuario_id: usuarioId,
-          tipo_equipamento_id: tipoEquipamentoId,
-          modelo_id: modeloId,
-          contrato_id: contratoId,
-          origem_id: origemId,
-          observacoes: textoOuNull(linha.descricao),
-          esset: textoOuNull(linha.ip_maquina),
-          termo_responsabilidade: null,
-          numero_termo_responsabilidade: null,
-        };
+    const ignorados: { linha: number; motivo: string }[] = [];
 
-        const existente = await prisma.maquinas.findFirst({
-          where: { numero_serie: numeroSerie },
+    for (const item of leitura.registros) {
+      const registro = item.dados;
+
+      const numeroSerie = campo(registro, "numero_serie");
+
+      if (!numeroSerie) {
+        ignorados.push({
+          linha: item.linha,
+          motivo: "Número de série vazio.",
+        });
+        continue;
+      }
+
+      const setorNome = campo(registro, "setor") || "Sem setor";
+      const usuarioNome = campo(registro, "usuario");
+      const loginEmail = campo(registro, "login_email");
+      const loginMaquina = campo(registro, "login_maquina");
+      const tipoNome = campo(registro, "tipo_equipamento");
+      const modeloNome = campo(registro, "modelo");
+      const contratoNome = campo(registro, "contrato");
+      const origemNome = campo(registro, "origem");
+
+      const setorId = await obterIdSetor(setorNome, cacheSetores);
+
+      const usuarioId = await obterIdUsuario(
+        usuarioNome,
+        loginEmail,
+        loginMaquina,
+        cacheUsuarios
+      );
+
+      const tipoEquipamentoId = await obterIdTipoEquipamento(
+        tipoNome,
+        cacheTipos
+      );
+
+      const modeloId = await obterIdModelo(modeloNome, cacheModelos);
+      const contratoId = await obterIdContrato(contratoNome, cacheContratos);
+      const origemId = await obterIdOrigem(origemNome, cacheOrigens);
+
+      const dadosMaquina = {
+        setor_id: setorId,
+        usuario_id: usuarioId,
+        tipo_equipamento_id: tipoEquipamentoId,
+        modelo_id: modeloId,
+        contrato_id: contratoId,
+        origem_id: origemId,
+        observacoes: vazioParaNull(campo(registro, "observacoes")),
+        esset: vazioParaNull(campo(registro, "esset")),
+        termo_responsabilidade: vazioParaNull(
+          campo(registro, "termo_responsabilidade")
+        ),
+        numero_termo_responsabilidade: vazioParaNull(
+          campo(registro, "numero_termo_responsabilidade")
+        ),
+      };
+
+      const maquinaExistente = await prisma.maquinas.findUnique({
+        where: { numero_serie: numeroSerie },
+        select: { id: true },
+      });
+
+      if (maquinaExistente) {
+        await prisma.maquinas.update({
+          where: { id: maquinaExistente.id },
+          data: dadosMaquina,
         });
 
-        /**
-         * Se não existir máquina com esse número de série,
-         * cria um novo registro.
-         */
-        if (!existente) {
-          const criada = await prisma.maquinas.create({
-            data: payload,
-          });
-
-          await criarLogAuditoria({
-            entidade: "maquina",
-            entidadeId: criada.id,
-            acao: "importacao_criacao",
-            funcionario: autorAuditoria(logado),
-            descricao: `Importou e criou a máquina ${criada.numero_serie}`,
-            antes: null,
-            depois: snapshotMaquina(criada),
-          });
-
-          resultado.criadas++;
-          continue;
-        }
-
-        const antes = snapshotMaquina(existente);
-
-        /**
-         * Verifica se houve mudança real.
-         * Se nada mudou, conta como ignorada.
-         */
-        const mudou =
-          existente.numero_serie !== payload.numero_serie ||
-          existente.setor_id !== payload.setor_id ||
-          existente.usuario_id !== payload.usuario_id ||
-          existente.tipo_equipamento_id !== payload.tipo_equipamento_id ||
-          existente.modelo_id !== payload.modelo_id ||
-          existente.contrato_id !== payload.contrato_id ||
-          existente.origem_id !== payload.origem_id ||
-          existente.observacoes !== payload.observacoes ||
-          existente.esset !== payload.esset ||
-          existente.termo_responsabilidade !== payload.termo_responsabilidade ||
-          existente.numero_termo_responsabilidade !==
-            payload.numero_termo_responsabilidade;
-
-        if (!mudou) {
-          resultado.ignoradas++;
-          continue;
-        }
-
-        /**
-         * Atualiza máquina existente.
-         */
-        const atualizada = await prisma.maquinas.update({
-          where: { id: existente.id },
-          data: payload,
+        atualizados++;
+      } else {
+        await prisma.maquinas.create({
+          data: {
+            numero_serie: numeroSerie,
+            ...dadosMaquina,
+          },
         });
 
-        await criarLogAuditoria({
-          entidade: "maquina",
-          entidadeId: atualizada.id,
-          acao: "importacao_atualizacao",
-          funcionario: autorAuditoria(logado),
-          descricao: `Importou e atualizou a máquina ${atualizada.numero_serie}`,
-          antes,
-          depois: snapshotMaquina(atualizada),
-        });
-
-        resultado.atualizadas++;
-      } catch (error) {
-        console.error(`Erro na linha ${index + 2}:`, error);
-        resultado.erros.push({
-          linha: index + 2,
-          erro: "Falha ao processar a linha.",
-        });
+        criados++;
       }
     }
 
     return NextResponse.json({
-      sucesso: true,
-      resultado,
-      colunasReconhecidas: [
-        "serial",
-        "criado_em",
-        "setor",
-        "usuario",
-        "empresa_contrato",
-        "modelo",
-        "categoria",
-        "descricao",
-        "contrato",
-        "ip_maquina",
-        "origem",
-      ],
+      mensagem: "Importação concluída.",
+      tipoArquivo: leitura.tipo,
+      totalLinhasLidas: leitura.registros.length,
+      criados,
+      atualizados,
+      ignorados: ignorados.length,
+      detalhesIgnorados: ignorados.slice(0, 50),
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "SEM_PERMISSAO") {
-      return NextResponse.json({ erro: "Sem permissão." }, { status: 403 });
-    }
+    console.error("Erro ao importar arquivo:", error);
 
-    if (error instanceof Error && error.message === "NAO_AUTENTICADO") {
-      return NextResponse.json({ erro: "Não autenticado." }, { status: 401 });
-    }
+    const mensagem =
+      error instanceof Error
+        ? error.message
+        : "Erro desconhecido ao importar arquivo.";
 
-    console.error("Erro ao importar CSV:", error);
     return NextResponse.json(
-      { erro: "Erro interno ao importar CSV." },
+      {
+        erro: "Erro interno ao importar arquivo.",
+        detalhe: mensagem,
+      },
       { status: 500 }
     );
   }
