@@ -1,4 +1,7 @@
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+
 
 import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
