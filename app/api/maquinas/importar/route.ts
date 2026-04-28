@@ -33,9 +33,10 @@ const ALIASES_HEADERS: Record<string, string> = {
 
   numero_serie: "numero_serie",
   numero_de_serie: "numero_serie",
-  número_de_série: "numero_serie",
-  n_serie: "numero_serie",
   numero_serial: "numero_serie",
+  numero_do_serial: "numero_serie",
+  n_serie: "numero_serie",
+  n_de_serie: "numero_serie",
   serial: "numero_serie",
   serie: "numero_serie",
   patrimonio: "numero_serie",
@@ -44,22 +45,32 @@ const ALIASES_HEADERS: Record<string, string> = {
   setor: "setor",
 
   usuario: "usuario",
-  usuário: "usuario",
   nome_usuario: "usuario",
   nome_do_usuario: "usuario",
   colaborador: "usuario",
   funcionario: "usuario",
-  funcionário: "usuario",
+  nome_funcionario: "usuario",
+  nome_do_funcionario: "usuario",
+
+  usuario_id: "usuario_id",
+  id_usuario: "usuario_id",
+  id_do_usuario: "usuario_id",
+  codigo_usuario: "usuario_id",
+  cod_usuario: "usuario_id",
 
   login_email: "login_email",
   email: "login_email",
   e_mail: "login_email",
   login: "login_email",
+  email_usuario: "login_email",
+  login_do_email: "login_email",
 
   login_maquina: "login_maquina",
   login_da_maquina: "login_maquina",
   usuario_maquina: "login_maquina",
-  usuário_máquina: "login_maquina",
+  user_maquina: "login_maquina",
+  login_rede: "login_maquina",
+  login_de_rede: "login_maquina",
 
   tipo: "tipo_equipamento",
   tipo_equipamento: "tipo_equipamento",
@@ -73,9 +84,8 @@ const ALIASES_HEADERS: Record<string, string> = {
 
   observacao: "observacoes",
   observacoes: "observacoes",
-  observações: "observacoes",
   descricao: "observacoes",
-  descrição: "observacoes",
+  descricoes: "observacoes",
 
   esset: "esset",
   asset: "esset",
@@ -83,8 +93,10 @@ const ALIASES_HEADERS: Record<string, string> = {
 
   termo_responsabilidade: "termo_responsabilidade",
   termo_de_responsabilidade: "termo_responsabilidade",
+  tr: "termo_responsabilidade",
 
   numero_termo_responsabilidade: "numero_termo_responsabilidade",
+  numero_do_termo_responsabilidade: "numero_termo_responsabilidade",
   numero_do_termo: "numero_termo_responsabilidade",
   numero_termo: "numero_termo_responsabilidade",
   n_termo: "numero_termo_responsabilidade",
@@ -100,6 +112,8 @@ function normalizarTexto(valor: unknown): string {
   const valoresVazios = [
     "",
     "-",
+    "--",
+    "---",
     "null",
     "nulo",
     "undefined",
@@ -107,6 +121,10 @@ function normalizarTexto(valor: unknown): string {
     "na",
     "não informado",
     "nao informado",
+    "não se aplica",
+    "nao se aplica",
+    "sem informação",
+    "sem informacao",
   ];
 
   if (valoresVazios.includes(normalizado)) {
@@ -138,6 +156,9 @@ function ehUsuarioLivre(valor: unknown): boolean {
     "sem usuario",
     "sem usuario vinculado",
     "sem colaborador",
+    "sem funcionario",
+    "disponivel",
+    "estoque",
   ].includes(texto);
 }
 
@@ -433,12 +454,25 @@ async function obterIdOrigem(nome: string, cache: Map<string, number>) {
 }
 
 async function obterIdUsuario(
+  usuarioIdTexto: string,
   nome: string,
   loginEmail: string,
   loginMaquina: string,
   cache: Map<string, number>,
   usuariosExistentes: UsuarioExistente[]
 ) {
+  const usuarioId = Number(usuarioIdTexto);
+
+  if (Number.isInteger(usuarioId) && usuarioId > 0) {
+    const usuarioPorId = usuariosExistentes.find(
+      (usuario) => usuario.id === usuarioId
+    );
+
+    if (usuarioPorId) {
+      return usuarioPorId.id;
+    }
+  }
+
   const nomeLimpo = ehUsuarioLivre(nome) ? "" : normalizarTexto(nome);
   const emailLimpo = ehUsuarioLivre(loginEmail)
     ? ""
@@ -455,7 +489,7 @@ async function obterIdUsuario(
   const emailNormalizado = normalizarPessoa(emailLimpo);
   const loginMaquinaNormalizado = normalizarPessoa(loginMaquinaLimpo);
 
-  const chave = `${nomeNormalizado}|${emailNormalizado}|${loginMaquinaNormalizado}`;
+  const chave = `${usuarioId || ""}|${nomeNormalizado}|${emailNormalizado}|${loginMaquinaNormalizado}`;
 
   if (cache.has(chave)) {
     return cache.get(chave)!;
@@ -473,7 +507,10 @@ async function obterIdUsuario(
         pontuacao += 100;
       }
 
-      if (loginMaquinaNormalizado && loginMaquinaUsuario === loginMaquinaNormalizado) {
+      if (
+        loginMaquinaNormalizado &&
+        loginMaquinaUsuario === loginMaquinaNormalizado
+      ) {
         pontuacao += 100;
       }
 
@@ -614,7 +651,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           erro:
-            "A coluna de número de série não foi encontrada. Use um cabeçalho como: numero_serie, número de série, serial ou patrimônio.",
+            "A coluna de número de série não foi encontrada. Use um cabeçalho como: Número de Série, numero_serie, serial ou patrimônio.",
           headersEncontrados: leitura.headers,
         },
         { status: 400 }
@@ -656,6 +693,7 @@ export async function POST(req: Request) {
       }
 
       const setorNome = campo(registro, "setor") || "Sem setor";
+      const usuarioIdTexto = campo(registro, "usuario_id");
       const usuarioNome = campo(registro, "usuario");
       const loginEmail = campo(registro, "login_email");
       const loginMaquina = campo(registro, "login_maquina");
@@ -667,6 +705,7 @@ export async function POST(req: Request) {
       const setorId = await obterIdSetor(setorNome, cacheSetores);
 
       const usuarioId = await obterIdUsuario(
+        usuarioIdTexto,
         usuarioNome,
         loginEmail,
         loginMaquina,
