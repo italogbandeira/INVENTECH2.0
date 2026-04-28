@@ -1,8 +1,6 @@
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-
-
 import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
 import { parse } from "csv-parse/sync";
@@ -23,10 +21,20 @@ type ResultadoLeitura = {
   registros: RegistroComLinha[];
 };
 
+type UsuarioExistente = {
+  id: number;
+  nome: string;
+  login_email: string | null;
+  login_maquina: string | null;
+};
+
 const ALIASES_HEADERS: Record<string, string> = {
+  id: "id",
+
   numero_serie: "numero_serie",
-  n_serie: "numero_serie",
   numero_de_serie: "numero_serie",
+  número_de_série: "numero_serie",
+  n_serie: "numero_serie",
   numero_serial: "numero_serie",
   serial: "numero_serie",
   serie: "numero_serie",
@@ -60,13 +68,10 @@ const ALIASES_HEADERS: Record<string, string> = {
   categoria: "tipo_equipamento",
 
   modelo: "modelo",
-
   contrato: "contrato",
-
   origem: "origem",
 
   observacao: "observacoes",
-  observacaoes: "observacoes",
   observacoes: "observacoes",
   observações: "observacoes",
   descricao: "observacoes",
@@ -86,7 +91,54 @@ const ALIASES_HEADERS: Record<string, string> = {
 };
 
 function normalizarTexto(valor: unknown): string {
-  return String(valor ?? "").trim();
+  const texto = String(valor ?? "")
+    .replace(/\u00A0/g, " ")
+    .trim();
+
+  const normalizado = texto.toLowerCase();
+
+  const valoresVazios = [
+    "",
+    "-",
+    "null",
+    "nulo",
+    "undefined",
+    "n/a",
+    "na",
+    "não informado",
+    "nao informado",
+  ];
+
+  if (valoresVazios.includes(normalizado)) {
+    return "";
+  }
+
+  return texto;
+}
+
+function normalizarPessoa(valor: unknown): string {
+  return normalizarTexto(valor)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/ç/g, "c")
+    .replace(/[^\w\s.@-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ehUsuarioLivre(valor: unknown): boolean {
+  const texto = normalizarPessoa(valor);
+
+  return [
+    "",
+    "livre",
+    "maquina livre",
+    "maquinas livres",
+    "sem usuario",
+    "sem usuario vinculado",
+    "sem colaborador",
+  ].includes(texto);
 }
 
 function normalizarHeader(valor: unknown): string {
@@ -109,9 +161,7 @@ function vazioParaNull(valor: string): string | null {
 
 function detectarDelimitador(texto: string): string {
   const primeiraLinha =
-    texto
-      .split(/\r?\n/)
-      .find((linha) => linha.trim().length > 0) ?? "";
+    texto.split(/\r?\n/).find((linha) => linha.trim().length > 0) ?? "";
 
   const qtdPontoVirgula = (primeiraLinha.match(/;/g) ?? []).length;
   const qtdVirgula = (primeiraLinha.match(/,/g) ?? []).length;
@@ -161,7 +211,8 @@ function lerCsv(bytes: Uint8Array): ResultadoLeitura {
   const delimitador = detectarDelimitador(textoCsv);
 
   const registros = parse(textoCsv, {
-    columns: (headers: string[]) => headers.map((header) => normalizarHeader(header)),
+    columns: (headers: string[]) =>
+      headers.map((header) => normalizarHeader(header)),
     bom: true,
     delimiter: delimitador,
     skip_empty_lines: true,
@@ -170,10 +221,7 @@ function lerCsv(bytes: Uint8Array): ResultadoLeitura {
     relax_column_count: true,
   }) as RegistroImportacao[];
 
-  const headers =
-    registros.length > 0
-      ? Object.keys(registros[0])
-      : [];
+  const headers = registros.length > 0 ? Object.keys(registros[0]) : [];
 
   return {
     tipo: "csv",
@@ -258,11 +306,9 @@ async function lerXlsx(bytes: Uint8Array): Promise<ResultadoLeitura> {
     headers.forEach((header, index) => {
       if (!header) return;
 
-      const valor = normalizarTexto(
+      dados[header] = normalizarTexto(
         valorCelulaExcel(row.getCell(index + 1).value)
       );
-
-      dados[header] = valor;
     });
 
     const temAlgumValor = Object.values(dados).some(
@@ -289,7 +335,7 @@ function campo(registro: RegistroImportacao, nome: string): string {
 }
 
 async function obterIdSetor(nome: string, cache: Map<string, number>) {
-  const nomeLimpo = nome || "Sem setor";
+  const nomeLimpo = normalizarTexto(nome) || "Sem setor";
 
   if (cache.has(nomeLimpo)) {
     return cache.get(nomeLimpo)!;
@@ -306,15 +352,10 @@ async function obterIdSetor(nome: string, cache: Map<string, number>) {
   return item.id;
 }
 
-async function obterIdTipoEquipamento(
-  nome: string,
-  cache: Map<string, number>
-) {
+async function obterIdTipoEquipamento(nome: string, cache: Map<string, number>) {
   const nomeLimpo = normalizarTexto(nome);
 
-  if (!nomeLimpo) {
-    return null;
-  }
+  if (!nomeLimpo) return null;
 
   if (cache.has(nomeLimpo)) {
     return cache.get(nomeLimpo)!;
@@ -334,9 +375,7 @@ async function obterIdTipoEquipamento(
 async function obterIdModelo(nome: string, cache: Map<string, number>) {
   const nomeLimpo = normalizarTexto(nome);
 
-  if (!nomeLimpo) {
-    return null;
-  }
+  if (!nomeLimpo) return null;
 
   if (cache.has(nomeLimpo)) {
     return cache.get(nomeLimpo)!;
@@ -356,9 +395,7 @@ async function obterIdModelo(nome: string, cache: Map<string, number>) {
 async function obterIdContrato(nome: string, cache: Map<string, number>) {
   const nomeLimpo = normalizarTexto(nome);
 
-  if (!nomeLimpo) {
-    return null;
-  }
+  if (!nomeLimpo) return null;
 
   if (cache.has(nomeLimpo)) {
     return cache.get(nomeLimpo)!;
@@ -378,9 +415,7 @@ async function obterIdContrato(nome: string, cache: Map<string, number>) {
 async function obterIdOrigem(nome: string, cache: Map<string, number>) {
   const nomeLimpo = normalizarTexto(nome);
 
-  if (!nomeLimpo) {
-    return null;
-  }
+  if (!nomeLimpo) return null;
 
   if (cache.has(nomeLimpo)) {
     return cache.get(nomeLimpo)!;
@@ -401,51 +436,106 @@ async function obterIdUsuario(
   nome: string,
   loginEmail: string,
   loginMaquina: string,
-  cache: Map<string, number>
+  cache: Map<string, number>,
+  usuariosExistentes: UsuarioExistente[]
 ) {
-  const nomeLimpo = normalizarTexto(nome);
-  const emailLimpo = normalizarTexto(loginEmail);
-  const loginMaquinaLimpo = normalizarTexto(loginMaquina);
+  const nomeLimpo = ehUsuarioLivre(nome) ? "" : normalizarTexto(nome);
+  const emailLimpo = ehUsuarioLivre(loginEmail)
+    ? ""
+    : normalizarTexto(loginEmail);
+  const loginMaquinaLimpo = ehUsuarioLivre(loginMaquina)
+    ? ""
+    : normalizarTexto(loginMaquina);
 
   if (!nomeLimpo && !emailLimpo && !loginMaquinaLimpo) {
     return null;
   }
 
-  const chave = `${nomeLimpo}|${emailLimpo}|${loginMaquinaLimpo}`;
+  const nomeNormalizado = normalizarPessoa(nomeLimpo);
+  const emailNormalizado = normalizarPessoa(emailLimpo);
+  const loginMaquinaNormalizado = normalizarPessoa(loginMaquinaLimpo);
+
+  const chave = `${nomeNormalizado}|${emailNormalizado}|${loginMaquinaNormalizado}`;
 
   if (cache.has(chave)) {
     return cache.get(chave)!;
   }
 
-  const or = [
-    emailLimpo ? { login_email: emailLimpo } : null,
-    loginMaquinaLimpo ? { login_maquina: loginMaquinaLimpo } : null,
-    nomeLimpo ? { nome: nomeLimpo } : null,
-  ].filter(Boolean) as {
-    login_email?: string;
-    login_maquina?: string;
-    nome?: string;
-  }[];
+  const candidatos = usuariosExistentes
+    .map((usuario) => {
+      const nomeUsuario = normalizarPessoa(usuario.nome);
+      const emailUsuario = normalizarPessoa(usuario.login_email);
+      const loginMaquinaUsuario = normalizarPessoa(usuario.login_maquina);
 
-  const usuarioExistente = await prisma.usuarios.findFirst({
-    where: {
-      OR: or,
-    },
-    select: { id: true },
-  });
+      let pontuacao = 0;
 
-  if (usuarioExistente) {
-    await prisma.usuarios.update({
-      where: { id: usuarioExistente.id },
-      data: {
-        nome: nomeLimpo || undefined,
-        login_email: emailLimpo || undefined,
-        login_maquina: loginMaquinaLimpo || undefined,
-      },
+      if (emailNormalizado && emailUsuario === emailNormalizado) {
+        pontuacao += 100;
+      }
+
+      if (loginMaquinaNormalizado && loginMaquinaUsuario === loginMaquinaNormalizado) {
+        pontuacao += 100;
+      }
+
+      if (nomeNormalizado && nomeUsuario === nomeNormalizado) {
+        pontuacao += 70;
+      }
+
+      if (normalizarTexto(usuario.login_email)) {
+        pontuacao += 10;
+      }
+
+      if (normalizarTexto(usuario.login_maquina)) {
+        pontuacao += 10;
+      }
+
+      return {
+        usuario,
+        pontuacao,
+      };
+    })
+    .filter((item) => item.pontuacao >= 70)
+    .sort((a, b) => {
+      if (b.pontuacao !== a.pontuacao) {
+        return b.pontuacao - a.pontuacao;
+      }
+
+      return a.usuario.id - b.usuario.id;
     });
 
-    cache.set(chave, usuarioExistente.id);
-    return usuarioExistente.id;
+  const melhorCandidato = candidatos[0]?.usuario;
+
+  if (melhorCandidato) {
+    const dadosAtualizacao: {
+      nome?: string;
+      login_email?: string | null;
+      login_maquina?: string | null;
+    } = {};
+
+    if (!normalizarTexto(melhorCandidato.nome) && nomeLimpo) {
+      dadosAtualizacao.nome = nomeLimpo;
+      melhorCandidato.nome = nomeLimpo;
+    }
+
+    if (!normalizarTexto(melhorCandidato.login_email) && emailLimpo) {
+      dadosAtualizacao.login_email = emailLimpo;
+      melhorCandidato.login_email = emailLimpo;
+    }
+
+    if (!normalizarTexto(melhorCandidato.login_maquina) && loginMaquinaLimpo) {
+      dadosAtualizacao.login_maquina = loginMaquinaLimpo;
+      melhorCandidato.login_maquina = loginMaquinaLimpo;
+    }
+
+    if (Object.keys(dadosAtualizacao).length > 0) {
+      await prisma.usuarios.update({
+        where: { id: melhorCandidato.id },
+        data: dadosAtualizacao,
+      });
+    }
+
+    cache.set(chave, melhorCandidato.id);
+    return melhorCandidato.id;
   }
 
   const novoUsuario = await prisma.usuarios.create({
@@ -454,8 +544,15 @@ async function obterIdUsuario(
       login_email: emailLimpo || null,
       login_maquina: loginMaquinaLimpo || null,
     },
-    select: { id: true },
+    select: {
+      id: true,
+      nome: true,
+      login_email: true,
+      login_maquina: true,
+    },
   });
+
+  usuariosExistentes.push(novoUsuario);
 
   cache.set(chave, novoUsuario.id);
   return novoUsuario.id;
@@ -501,13 +598,7 @@ export async function POST(req: Request) {
       );
     }
 
-    let leitura: ResultadoLeitura;
-
-    if (arquivoEhXlsx(bytes)) {
-      leitura = await lerXlsx(bytes);
-    } else {
-      leitura = lerCsv(bytes);
-    }
+    const leitura = arquivoEhXlsx(bytes) ? await lerXlsx(bytes) : lerCsv(bytes);
 
     if (leitura.registros.length === 0) {
       return NextResponse.json(
@@ -529,6 +620,15 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    const usuariosExistentes = await prisma.usuarios.findMany({
+      select: {
+        id: true,
+        nome: true,
+        login_email: true,
+        login_maquina: true,
+      },
+    });
 
     const cacheSetores = new Map<string, number>();
     const cacheUsuarios = new Map<string, number>();
@@ -570,7 +670,8 @@ export async function POST(req: Request) {
         usuarioNome,
         loginEmail,
         loginMaquina,
-        cacheUsuarios
+        cacheUsuarios,
+        usuariosExistentes
       );
 
       const tipoEquipamentoId = await obterIdTipoEquipamento(

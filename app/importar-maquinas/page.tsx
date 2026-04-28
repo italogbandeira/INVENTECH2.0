@@ -72,13 +72,11 @@ export default function ImportarMaquinasPage() {
 
       if (!response.ok) {
         throw new Error(
-          data?.erro ||
-            data?.detalhe ||
-            "Erro ao importar o arquivo."
+          data?.erro || data?.detalhe || "Erro ao importar arquivo."
         );
       }
 
-      const resultadoFormatado: ResultadoImportacao = {
+      setResultado({
         total: data?.totalLinhasLidas ?? 0,
         criadas: data?.criados ?? 0,
         atualizadas: data?.atualizados ?? 0,
@@ -88,9 +86,7 @@ export default function ImportarMaquinasPage() {
             linha: item.linha,
             erro: item.erro || item.motivo || "Linha ignorada.",
           })) ?? [],
-      };
-
-      setResultado(resultadoFormatado);
+      });
     } catch (error) {
       console.error("Erro ao importar:", error);
 
@@ -115,8 +111,7 @@ export default function ImportarMaquinasPage() {
               </h1>
 
               <p className="mt-1 text-sm text-slate-500">
-                Envie um arquivo CSV ou XLSX para criar ou atualizar máquinas
-                automaticamente.
+                Envie um CSV ou XLSX para criar ou atualizar máquinas automaticamente.
               </p>
             </div>
 
@@ -177,8 +172,7 @@ export default function ImportarMaquinasPage() {
 
             {enviando && (
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
-                Importando arquivo. Aguarde, esse processo pode demorar se o
-                arquivo tiver muitas linhas.
+                Importando arquivo. Aguarde, esse processo pode demorar se o arquivo tiver muitas linhas.
               </div>
             )}
 
