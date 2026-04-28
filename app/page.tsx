@@ -198,6 +198,69 @@ function HomeContent() {
     }
   }
 
+
+
+
+async function limparTodasMaquinas() {
+  if (funcionarioLogado?.perfil !== "master") {
+    alert("Apenas usuários master podem apagar todas as máquinas.");
+    return;
+  }
+
+  const confirmacao = window.prompt(
+    'Você está prestes a apagar TODAS as máquinas cadastradas.\n\nEssa ação não pode ser desfeita.\n\nPara confirmar, digite: deletar'
+  );
+
+  if (confirmacao === null) {
+    return;
+  }
+
+  if (confirmacao.trim().toLowerCase() !== "deletar") {
+    alert('Confirmação inválida. Para apagar, digite exatamente "deletar".');
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/maquinas/limpar-tudo", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        confirmacao,
+      }),
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        data?.erro || data?.detalhe || "Erro ao apagar todas as máquinas."
+      );
+    }
+
+    alert(
+      `Inventário limpo com sucesso.\n\nMáquinas removidas: ${
+        data?.removidas ?? 0
+      }`
+    );
+
+    carregarMaquinas();
+  } catch (error) {
+    console.error("Erro ao limpar inventário:", error);
+
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Erro desconhecido ao limpar inventário."
+    );
+  }
+}
+
+
+
+
+
   /**
    * Busca o funcionário logado via /api/me.
    *
@@ -834,6 +897,19 @@ function HomeContent() {
                 <strong>{selecionadas.length}</strong> máquina(s) selecionada(s)
               </p>
             </div>
+
+
+                  {funcionarioLogado?.perfil === "master" && (
+  <button
+    type="button"
+    onClick={limparTodasMaquinas}
+    className="rounded-xl bg-red-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-900"
+  >
+    Limpar inventário
+  </button>
+)}
+
+
 
             {/* Ações em massa */}
             <div className="flex flex-wrap gap-2">
