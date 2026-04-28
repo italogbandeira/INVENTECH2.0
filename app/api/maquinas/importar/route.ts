@@ -33,12 +33,12 @@ const ALIASES_HEADERS: Record<string, string> = {
 
   numero_serie: "numero_serie",
   numero_de_serie: "numero_serie",
-  numero_serial: "numero_serie",
   numero_do_serial: "numero_serie",
+  numero_serial: "numero_serie",
   n_serie: "numero_serie",
   n_de_serie: "numero_serie",
-  serial: "numero_serie",
   serie: "numero_serie",
+  serial: "numero_serie",
   patrimonio: "numero_serie",
   patrimonial: "numero_serie",
 
@@ -55,20 +55,15 @@ const ALIASES_HEADERS: Record<string, string> = {
   usuario_id: "usuario_id",
   id_usuario: "usuario_id",
   id_do_usuario: "usuario_id",
-  codigo_usuario: "usuario_id",
-  cod_usuario: "usuario_id",
 
   login_email: "login_email",
   email: "login_email",
   e_mail: "login_email",
-  login: "login_email",
   email_usuario: "login_email",
-  login_do_email: "login_email",
 
   login_maquina: "login_maquina",
   login_da_maquina: "login_maquina",
   usuario_maquina: "login_maquina",
-  user_maquina: "login_maquina",
   login_rede: "login_maquina",
   login_de_rede: "login_maquina",
 
@@ -85,7 +80,6 @@ const ALIASES_HEADERS: Record<string, string> = {
   observacao: "observacoes",
   observacoes: "observacoes",
   descricao: "observacoes",
-  descricoes: "observacoes",
 
   esset: "esset",
   asset: "esset",
@@ -180,6 +174,28 @@ function vazioParaNull(valor: string): string | null {
   return limpo.length > 0 ? limpo : null;
 }
 
+function extrairDadosDasObservacoes(observacoes: string) {
+  const texto = normalizarTexto(observacoes);
+
+  if (!texto) {
+    return {
+      loginMaquina: "",
+      loginEmail: "",
+    };
+  }
+
+  const emailMatch = texto.match(
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
+  );
+
+  const idMatch = texto.match(/\bID\s*[:=-]\s*([^\s,;|]+)/i);
+
+  return {
+    loginMaquina: normalizarTexto(idMatch?.[1] ?? ""),
+    loginEmail: normalizarTexto(emailMatch?.[0] ?? ""),
+  };
+}
+
 function detectarDelimitador(texto: string): string {
   const primeiraLinha =
     texto.split(/\r?\n/).find((linha) => linha.trim().length > 0) ?? "";
@@ -269,7 +285,6 @@ function valorCelulaExcel(valor: ExcelJS.CellValue): string {
       richText?: { text: string }[];
       result?: unknown;
       formula?: string;
-      hyperlink?: string;
     };
 
     if (Array.isArray(objeto.richText)) {
@@ -695,8 +710,22 @@ export async function POST(req: Request) {
       const setorNome = campo(registro, "setor") || "Sem setor";
       const usuarioIdTexto = campo(registro, "usuario_id");
       const usuarioNome = campo(registro, "usuario");
-      const loginEmail = campo(registro, "login_email");
-      const loginMaquina = campo(registro, "login_maquina");
+      const observacoes = campo(registro, "observacoes");
+
+      const dadosObservacoes = extrairDadosDasObservacoes(observacoes);
+
+      const usuarioLivre = ehUsuarioLivre(usuarioNome);
+
+      const loginEmail =
+        usuarioLivre
+          ? ""
+          : campo(registro, "login_email") || dadosObservacoes.loginEmail;
+
+      const loginMaquina =
+        usuarioLivre
+          ? ""
+          : campo(registro, "login_maquina") || dadosObservacoes.loginMaquina;
+
       const tipoNome = campo(registro, "tipo_equipamento");
       const modeloNome = campo(registro, "modelo");
       const contratoNome = campo(registro, "contrato");
@@ -729,7 +758,7 @@ export async function POST(req: Request) {
         modelo_id: modeloId,
         contrato_id: contratoId,
         origem_id: origemId,
-        observacoes: vazioParaNull(campo(registro, "observacoes")),
+        observacoes: vazioParaNull(observacoes),
         esset: vazioParaNull(campo(registro, "esset")),
         termo_responsabilidade: vazioParaNull(
           campo(registro, "termo_responsabilidade")
