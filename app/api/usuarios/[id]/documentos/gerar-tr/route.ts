@@ -66,7 +66,7 @@ const POS_TABELA_ACESSORIOS_X = 490;
  * Cada valor representa a altura de uma linha da tabela.
  * A primeira linha preenchida usa o primeiro Y, e assim por diante.
  */
-const POS_TABELA_LINHAS_Y = [455, 430, 395];
+const POS_TABELA_LINHAS_Y = [480 , 450, 420];
 
 
 const FONT_SIZE_PADRAO = 9;
