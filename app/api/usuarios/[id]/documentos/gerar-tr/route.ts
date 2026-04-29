@@ -30,10 +30,6 @@ type MaquinaParaTermo = {
 };
 
 /**
- * Meses em português para a data por extenso.
- */
-
-/**
  * =========================
  * CONSTANTES DE POSICIONAMENTO
  * =========================
@@ -66,17 +62,10 @@ const POS_TABELA_ACESSORIOS_X = 490;
  * Cada valor representa a altura de uma linha da tabela.
  * A primeira linha preenchida usa o primeiro Y, e assim por diante.
  */
-const POS_TABELA_LINHAS_Y = [480 , 450, 420];
-
+const POS_TABELA_LINHAS_Y = [480, 450, 420];
 
 const FONT_SIZE_PADRAO = 9;
 const FONT_SIZE_TABELA = 8.5;
-
-/**
- * Formata a data atual no padrão:
- * Recife, 16 de abril de 2026.
- */
-
 
 /**
  * Corta texto longo para não estourar visualmente no PDF.
@@ -124,7 +113,9 @@ async function buscarUsuario(usuarioId: number) {
  * - no máximo 3 máquinas, porque o modelo do PDF comporta
  *   uma lista curta visualmente.
  */
-async function buscarMaquinasParaTermo(usuarioId: number): Promise<MaquinaParaTermo[]> {
+async function buscarMaquinasParaTermo(
+  usuarioId: number
+): Promise<MaquinaParaTermo[]> {
   const [maquinas, setores, tipos, modelos] = await Promise.all([
     prisma.maquinas.findMany({
       where: { usuario_id: usuarioId },
@@ -329,21 +320,15 @@ export async function POST(_req: NextRequest, context: ContextoParams) {
      * =========================
      * DATA
      * =========================
+     *
+     * Não preencher automaticamente.
      */
 
-    /**
-     * Gera bytes finais do PDF.
-     */
     const pdfBytes = await pdfDoc.save();
 
-    /**
-     * Nome amigável do arquivo para download.
-     */
     const nomeArquivo = `TR-${usuario.nome
       .replace(/\s+/g, "-")
-      .replace(/[^\w\-À-ÿ]/g, "")}-${new Date()
-      .toISOString()
-      .slice(0, 10)}.pdf`;
+      .replace(/[^\w\-À-ÿ]/g, "")}.pdf`;
 
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,

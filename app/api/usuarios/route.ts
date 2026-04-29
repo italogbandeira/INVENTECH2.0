@@ -3,12 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { exigeLogin } from "@/lib/auth";
 import { criarLogAuditoria } from "@/lib/auditoria";
 
-/**
- * Estrutura da resposta da listagem de usuários.
- *
- * Além dos dados básicos do usuário, a API também retorna
- * a quantidade de máquinas vinculadas a cada um.
- */
 type UsuarioComTotal = {
   id: number;
   nome: string;
@@ -17,25 +11,6 @@ type UsuarioComTotal = {
   totalMaquinas: number;
 };
 
-/**
- * GET /api/usuarios
- *
- * Responsabilidades:
- * - exigir autenticação
- * - listar usuários
- * - aceitar filtros opcionais por:
- *   - id
- *   - nome
- *   - setor
- * - calcular quantidade de máquinas vinculadas por usuário
- *
- * Observação:
- * o filtro por setor funciona de forma indireta:
- * 1. encontra setores compatíveis com o texto pesquisado
- * 2. encontra máquinas desses setores que possuem usuário vinculado
- * 3. extrai os IDs dos usuários dessas máquinas
- * 4. filtra a listagem final por esses IDs
- */
 export async function GET(req: NextRequest) {
   try {
     await exigeLogin();
@@ -46,11 +21,6 @@ export async function GET(req: NextRequest) {
     const nomeParam = searchParams.get("nome")?.trim();
     const setorParam = searchParams.get("setor")?.trim();
 
-    /**
-     * Quando o filtro por setor for usado,
-     * esta variável armazenará os IDs dos usuários encontrados
-     * a partir das máquinas vinculadas àquele setor.
-     */
     let idsUsuariosPorSetor: number[] | null = null;
 
     if (setorParam) {
@@ -67,10 +37,6 @@ export async function GET(req: NextRequest) {
 
       const setorIds = setores.map((setor) => setor.id);
 
-      /**
-       * Se nenhum setor bater com a busca,
-       * a resposta já pode ser vazia.
-       */
       if (setorIds.length === 0) {
         return NextResponse.json([]);
       }
@@ -89,9 +55,6 @@ export async function GET(req: NextRequest) {
         },
       });
 
-      /**
-       * Extrai IDs únicos de usuários presentes nas máquinas do setor.
-       */
       idsUsuariosPorSetor = Array.from(
         new Set(
           maquinasDoSetor
@@ -100,20 +63,11 @@ export async function GET(req: NextRequest) {
         )
       );
 
-      /**
-       * Se não houver usuários vinculados em máquinas do setor,
-       * a resposta também já pode ser vazia.
-       */
       if (idsUsuariosPorSetor.length === 0) {
         return NextResponse.json([]);
       }
     }
 
-    /**
-     * Busca principal de usuários.
-     *
-     * Os filtros são montados dinamicamente.
-     */
     const usuarios = await prisma.usuarios.findMany({
       where: {
         ...(idParam && !Number.isNaN(Number(idParam))
@@ -139,10 +93,6 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    /**
-     * Busca as máquinas vinculadas aos usuários encontrados
-     * para calcular total por usuário.
-     */
     const usuarioIds = usuarios.map((usuario) => usuario.id);
 
     const maquinas = usuarioIds.length
@@ -158,9 +108,6 @@ export async function GET(req: NextRequest) {
         })
       : [];
 
-    /**
-     * Monta um mapa { usuarioId: totalDeMaquinas }.
-     */
     const totalPorUsuario = maquinas.reduce<Record<number, number>>(
       (acc, maquina) => {
         if (typeof maquina.usuario_id === "number") {
@@ -171,9 +118,6 @@ export async function GET(req: NextRequest) {
       {}
     );
 
-    /**
-     * Acrescenta o campo totalMaquinas à resposta final.
-     */
     const resposta: UsuarioComTotal[] = usuarios.map((usuario) => ({
       ...usuario,
       totalMaquinas: totalPorUsuario[usuario.id] || 0,
@@ -193,15 +137,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/**
- * POST /api/usuarios
- *
- * Responsabilidades:
- * - exigir autenticação
- * - validar nome obrigatório
- * - criar novo usuário
- * - registrar auditoria da criação
- */
 export async function POST(req: NextRequest) {
   try {
     const funcionario = await exigeLogin();
@@ -227,9 +162,6 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    /**
-     * Registra a criação do usuário na auditoria.
-     */
     await criarLogAuditoria({
       entidade: "usuario",
       entidadeId: usuario.id,

@@ -11,6 +11,11 @@ type Usuario = {
   totalMaquinas: number;
 };
 
+type Setor = {
+  id: number;
+  nome: string;
+};
+
 function exibirValor(valor: string | null) {
   const texto = String(valor ?? "")
     .replace(/\u00A0/g, " ")
@@ -30,7 +35,7 @@ function exibirValor(valor: string | null) {
   return texto;
 }
 
-function normalizarPessoa(valor: string | null) {
+function normalizarBusca(valor: string | null) {
   return String(valor ?? "")
     .replace(/\u00A0/g, " ")
     .normalize("NFD")
@@ -42,22 +47,47 @@ function normalizarPessoa(valor: string | null) {
     .trim();
 }
 
-function normalizarBusca(valor: string | null) {
-  return normalizarPessoa(valor);
-}
-
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [setores, setSetores] = useState<Setor[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
+  const [setorSelecionado, setSetorSelecionado] = useState("");
+  const [gerandoTR, setGerandoTR] = useState(false);
 
-  async function carregarUsuarios() {
+  async function carregarSetores() {
+    try {
+      const response = await fetch("/api/setores");
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.erro || "Erro ao carregar setores.");
+      }
+
+      setSetores(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Erro ao carregar setores:", error);
+      setSetores([]);
+    }
+  }
+
+  async function carregarUsuarios(setor = setorSelecionado) {
     try {
       setLoading(true);
       setErro("");
 
-      const response = await fetch("/api/usuarios");
+      const params = new URLSearchParams();
+
+      if (setor.trim()) {
+        params.set("setor", setor.trim());
+      }
+
+      const url = params.toString()
+        ? `/api/usuarios?${params.toString()}`
+        : "/api/usuarios";
+
+      const response = await fetch(url);
       const data = await response.json();
 
       if (!response.ok) {
@@ -85,22 +115,66 @@ export default function UsuariosPage() {
     }
   }
 
-  useEffect(() => {
-    void carregarUsuarios();
-  }, []);
+  async function gerarTRDoFiltro() {
+    if (!setorSelecionado.trim()) {
+      alert("Selecione um setor antes de gerar o TR do filtro.");
+      return;
+    }
 
-  const duplicadosPorNome = useMemo(() => {
-    return usuarios.reduce<Record<string, number>>((acc, usuario) => {
-      const chave = normalizarPessoa(usuario.nome);
+    try {
+      setGerandoTR(true);
 
-      if (!chave || chave === "livre") {
-        return acc;
+      const response = await fetch("/api/usuarios/gerar-tr-filtro", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          setor: setorSelecionado,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.erro || "Erro ao gerar TR do filtro.");
       }
 
-      acc[chave] = (acc[chave] ?? 0) + 1;
-      return acc;
-    }, {});
-  }, [usuarios]);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = `TR-${setorSelecionado}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível gerar o TR do filtro."
+      );
+    } finally {
+      setGerandoTR(false);
+    }
+  }
+
+  async function handleFiltrar() {
+    await carregarUsuarios(setorSelecionado);
+  }
+
+  async function handleLimpar() {
+    setBusca("");
+    setSetorSelecionado("");
+    await carregarUsuarios("");
+  }
+
+  useEffect(() => {
+    void Promise.all([carregarSetores(), carregarUsuarios("")]);
+  }, []);
 
   const usuariosFiltrados = useMemo(() => {
     const termo = normalizarBusca(busca);
@@ -121,10 +195,6 @@ export default function UsuariosPage() {
       return campos.some((campo) => normalizarBusca(campo).includes(termo));
     });
   }, [usuarios, busca]);
-
-  const totalPossiveisDuplicados = useMemo(() => {
-    return Object.values(duplicadosPorNome).filter((total) => total > 1).length;
-  }, [duplicadosPorNome]);
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-900 md:p-8">
@@ -149,9 +219,9 @@ export default function UsuariosPage() {
                   Exibindo: {usuariosFiltrados.length}
                 </span>
 
-                {totalPossiveisDuplicados > 0 && (
-                  <span className="rounded-full bg-yellow-100 px-3 py-1 font-semibold text-yellow-800">
-                    {totalPossiveisDuplicados} possível(is) grupo(s) duplicado(s)
+                {setorSelecionado && (
+                  <span className="rounded-full bg-blue-100 px-3 py-1 font-medium text-blue-800">
+                    Setor: {setorSelecionado}
                   </span>
                 )}
               </div>
@@ -168,7 +238,7 @@ export default function UsuariosPage() {
               <button
                 type="button"
                 onClick={() => void carregarUsuarios()}
-                disabled={loading}
+                disabled={loading || gerandoTR}
                 className="inline-flex items-center rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Atualizar
@@ -185,21 +255,74 @@ export default function UsuariosPage() {
         </section>
 
         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-          <label className="mb-2 block text-sm font-medium text-slate-700">
-            Buscar usuário
-          </label>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_280px_auto] md:items-end">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Buscar usuário
+              </label>
 
-          <input
-            type="text"
-            value={busca}
-            onChange={(event) => setBusca(event.target.value)}
-            placeholder="Busque por nome, login, ID ou quantidade de máquinas..."
-            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm shadow-sm outline-none focus:border-blue-500"
-          />
+              <input
+                type="text"
+                value={busca}
+                onChange={(event) => setBusca(event.target.value)}
+                placeholder="Busque por nome, login, ID ou quantidade de máquinas..."
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm shadow-sm outline-none focus:border-blue-500"
+              />
 
-          <p className="mt-2 text-xs text-slate-500">
-            A busca ignora diferença de acentos, espaços extras e maiúsculas.
-          </p>
+              <p className="mt-2 text-xs text-slate-500">
+                A busca ignora diferença de acentos, espaços extras e maiúsculas.
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Setor
+              </label>
+
+              <select
+                value={setorSelecionado}
+                onChange={(event) => setSetorSelecionado(event.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm shadow-sm outline-none focus:border-blue-500"
+              >
+                <option value="">Todos os setores</option>
+
+                {setores.map((setor) => (
+                  <option key={setor.id} value={setor.nome}>
+                    {setor.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void handleFiltrar()}
+                disabled={loading || gerandoTR}
+                className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Filtrar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleLimpar()}
+                disabled={loading || gerandoTR}
+                className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Limpar
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void gerarTRDoFiltro()}
+                disabled={loading || gerandoTR || !setorSelecionado}
+                className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {gerandoTR ? "Gerando TR..." : "Gerar TR do filtro"}
+              </button>
+            </div>
+          </div>
         </section>
 
         {erro && (
@@ -237,65 +360,41 @@ export default function UsuariosPage() {
                 )}
 
                 {!loading &&
-                  usuariosFiltrados.map((usuario) => {
-                    const chaveDuplicado = normalizarPessoa(usuario.nome);
-                    const possivelDuplicado =
-                      chaveDuplicado &&
-                      duplicadosPorNome[chaveDuplicado] > 1 &&
-                      chaveDuplicado !== "livre";
+                  usuariosFiltrados.map((usuario) => (
+                    <tr
+                      key={usuario.id}
+                      className="border-t border-slate-200 odd:bg-white even:bg-slate-50"
+                    >
+                      <td className="p-4 text-sm text-slate-700">
+                        {usuario.id}
+                      </td>
 
-                    return (
-                      <tr
-                        key={usuario.id}
-                        className="border-t border-slate-200 odd:bg-white even:bg-slate-50"
-                      >
-                        <td className="p-4 text-sm text-slate-700">
-                          {usuario.id}
-                        </td>
+                      <td className="p-4 text-sm font-medium text-slate-900">
+                        {exibirValor(usuario.nome)}
+                      </td>
 
-                        <td className="p-4 text-sm font-medium text-slate-900">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span>{exibirValor(usuario.nome)}</span>
+                      <td className="p-4 text-sm text-slate-700">
+                        {exibirValor(usuario.login_email)}
+                      </td>
 
-                              {possivelDuplicado && (
-                                <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-800">
-                                  Possível duplicado
-                                </span>
-                              )}
-                            </div>
+                      <td className="p-4 text-sm text-slate-700">
+                        {exibirValor(usuario.login_maquina)}
+                      </td>
 
-                            {possivelDuplicado && (
-                              <span className="text-xs font-normal text-slate-500">
-                                Nome normalizado: {chaveDuplicado}
-                              </span>
-                            )}
-                          </div>
-                        </td>
+                      <td className="p-4 text-sm text-slate-700">
+                        {usuario.totalMaquinas}
+                      </td>
 
-                        <td className="p-4 text-sm text-slate-700">
-                          {exibirValor(usuario.login_email)}
-                        </td>
-
-                        <td className="p-4 text-sm text-slate-700">
-                          {exibirValor(usuario.login_maquina)}
-                        </td>
-
-                        <td className="p-4 text-sm text-slate-700">
-                          {usuario.totalMaquinas}
-                        </td>
-
-                        <td className="p-4">
-                          <Link
-                            href={`/usuarios/${usuario.id}`}
-                            className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
-                          >
-                            Ver
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      <td className="p-4">
+                        <Link
+                          href={`/usuarios/${usuario.id}`}
+                          className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+                        >
+                          Ver
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
 
                 {!loading && usuariosFiltrados.length === 0 && (
                   <tr>
@@ -304,13 +403,13 @@ export default function UsuariosPage() {
                         Nenhum usuário encontrado.
                       </div>
 
-                      {busca && (
+                      {(busca || setorSelecionado) && (
                         <button
                           type="button"
-                          onClick={() => setBusca("")}
+                          onClick={() => void handleLimpar()}
                           className="mt-3 rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900"
                         >
-                          Limpar busca
+                          Limpar filtros
                         </button>
                       )}
                     </td>
@@ -320,20 +419,6 @@ export default function UsuariosPage() {
             </table>
           </div>
         </section>
-
-        {totalPossiveisDuplicados > 0 && (
-          <section className="rounded-3xl border border-yellow-200 bg-yellow-50 p-5 text-sm text-yellow-900 shadow-sm">
-            <h2 className="font-semibold">Atenção</h2>
-
-            <p className="mt-1">
-              Usuários marcados como possível duplicado têm nomes que ficam
-              iguais após remover acentos, espaços extras e diferenças de
-              maiúsculas. Essa tela apenas identifica o problema; para juntar as
-              máquinas em um único cadastro, ainda é necessário mesclar os
-              registros no banco ou criar uma rotina de mesclagem.
-            </p>
-          </section>
-        )}
       </div>
     </main>
   );
