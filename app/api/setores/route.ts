@@ -1,39 +1,40 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { exigeLogin } from "@/lib/auth";
 
-/**
- * Estrutura mínima de um setor retornado pela consulta.
- */
-type Setor = {
-  id: number;
-  nome: string;
-};
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
-/**
- * GET /api/setores
- *
- * Responsabilidades:
- * - buscar os setores cadastrados
- * - ordenar alfabeticamente por nome
- * - retornar uma lista simples para alimentar filtros e selects
- *
- * Observação:
- * esta rota usa SQL bruto com $queryRaw.
- */
 export async function GET() {
   try {
-    const setores = await prisma.$queryRaw<Setor[]>`
-      SELECT id, nome
-      FROM setores
-      ORDER BY nome ASC
-    `;
+    await exigeLogin();
+
+    const setores = await prisma.setores.findMany({
+      orderBy: {
+        nome: "asc",
+      },
+      select: {
+        id: true,
+        nome: true,
+      },
+    });
 
     return NextResponse.json(setores);
   } catch (error) {
+    if (error instanceof Error && error.message === "NAO_AUTENTICADO") {
+      return NextResponse.json({ erro: "Não autenticado." }, { status: 401 });
+    }
+
     console.error("Erro ao buscar setores:", error);
 
+    const detalhe =
+      error instanceof Error ? error.message : "Erro desconhecido.";
+
     return NextResponse.json(
-      { error: "Erro ao buscar setores" },
+      {
+        erro: "Erro ao buscar setores.",
+        detalhe,
+      },
       { status: 500 }
     );
   }
